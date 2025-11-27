@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+"""
+加密貨幣策略交易系統 - 主程式
+
+功能:
+- 多策略技術分析回測系統
+- 實時監控與信號通知
+- 支援個別策略和綜合策略測試
+- 可配置的資金管理和風險控制
+
+"""
+
+import argparse
+import logging
+from dataclasses import dataclass
+
+import matplotlib
+from config.coin_configs import create_coin_configs
+from config.trading_config import TradingConfig
+from trading.monitor import CryptoMonitor
+from trading.backtest import CryptoBacktester
+from tests.test_backtest import debug_mode
+
+# 設置 matplotlib 後端和字體配置
+# 使用 Agg 後端避免 GUI 依賴，適合服務器環境
+matplotlib.use("Agg")
+matplotlib.rcParams["font.family"] = "sans-serif"
+matplotlib.rcParams["font.sans-serif"] = [
+    "Liberation Sans",  # Linux 系統字體
+    "Arial",  # Windows 系統字體
+    "DejaVu Sans",  # 跨平台字體
+    "sans-serif",  # 後備字體
+]
+matplotlib.rcParams["axes.unicode_minus"] = False  # 解決負號顯示問題
+
+
+
+
+def setup_logging():
+    """
+    設置系統日誌配置
+
+    配置日誌格式、級別和輸出方式
+    使用 INFO 級別記錄重要操作和結果
+    """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("trading_system.log", encoding="utf-8"),
+            logging.StreamHandler(),
+        ],
+    )
+
+
+def show_menu():
+    """
+    顯示主選單界面
+
+    提供用戶選擇系統功能的交互界面
+    包含回測、監控和退出選項
+    """
+    print("\n" + "=" * 50)
+    print("🚀 加密貨幣策略交易系統")
+    print("=" * 50)
+    print("1. 📊 執行回測")
+    print("2. 👁️  開始監控")
+    print("3. ❌ 退出")
+    print("=" * 50)
+
+
+def main():
+    """
+    主程式入口點
+
+    處理命令行參數，根據參數決定執行模式：
+    - --debug: 執行單元測試和詳細回測
+    - 無參數: 進入交互式選單模式
+
+    功能包括：
+    1. 單元測試驗證
+    2. 個別策略回測
+    3. 綜合策略回測
+    4. 實時監控
+    """
+    """主程式"""
+    setup_logging()
+
+    parser = argparse.ArgumentParser(
+        description="加密貨幣策略交易系統",
+        epilog="""
+使用範例:
+  1. 交互式模式（默認）:
+     python main.py
+  
+  2. Debug 回測模式:
+     python main.py --debug --days 7
+  
+  3. 分析模式:
+     python main.py --analyze --start 2025-11-01 --end 2025-11-10
+     python main.py --analyze --start 2025-11-01 --end 2025-11-10 --output analysis.csv
+  
+  4. 視覺化模式:
+     python main.py --visualize --start 2025-11-01 --end 2025-11-10
+     python main.py --visualize --start 2025-11-01 --end 2025-11-10 --methods macd lstm --output chart.png
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("--debug", action="store_true", help="Debug 模式")
+    parser.add_argument("--days", type=int, default=30, help="回測天數 (默認30天)")
+    parser.add_argument("--analyze", action="store_true", help="分析模式 - 分析指定日期的技術指標")
+    parser.add_argument("--visualize", action="store_true", help="視覺化模式 - 顯示檢測信號圖表")
+    parser.add_argument("--start", "--start-date", type=str, dest="start_date", help="開始日期 (YYYY-MM-DD)")
+    parser.add_argument("--end", "--end-date", type=str, dest="end_date", help="結束日期 (YYYY-MM-DD)")
+    parser.add_argument("--output", type=str, help="輸出文件路徑 (CSV 或 PNG)")
+    parser.add_argument("--methods", type=str, nargs="+", 
+                       choices=["macd", "lstm", "volume", "btc", "peak", "triple"],
+                       help="檢測方法 (visualize 模式使用，默認全部)")
+    args = parser.parse_args()
+
+    if args.debug:
+        debug_mode(args.days)
+        return
+    
+    if args.analyze:
+        if not args.start_date or not args.end_date:
+            print("❌ 錯誤: --analyze 模式需要 --start 和 --end 參數")
+            print("範例: python main.py --analyze --start 2025-11-01 --end 2025-11-10")
+            return
+        from scripts.analyze import run_analysis
+        run_analysis(args.start_date, args.end_date, args.output)
+        return
+    
+    if args.visualize:
+        if not args.start_date or not args.end_date:
+            print("❌ 錯誤: --visualize 模式需要 --start 和 --end 參數")
+            print("範例: python main.py --visualize --start 2025-11-01 --end 2025-11-10")
+            return
+        from scripts.visualize import run_visualization
+        run_visualization(args.start_date, args.end_date, args.methods, args.output)
+        return
+
+    config = TradingConfig()
+    coin_configs = create_coin_configs()
+
+    while True:
+        show_menu()
+
+        try:
+            choice = input("請選擇功能 (1-3): ").strip()
+
+            if choice == "1":
+                print("\n📊 選擇回測期間:")
+                print("1. 一週")
+                print("2. 一個月")
+                print("3. 三個月")
+
+                period_choice = input("請選擇回測期間 (1-3): ").strip()
+
+                if period_choice == "1":
+                    days = 7
+                elif period_choice == "2":
+                    days = 30
+                elif period_choice == "3":
+                    days = 90
+                else:
+                    print("❌ 無效選擇")
+                    continue
+
+                print(f"\n📊 開始 {days} 天回測...")
+                backtester = CryptoBacktester(config)
+                results = backtester.run_backtest(coin_configs, days)
+
+                logging.info("\n=== 回測總結 ===")
+                for result in results:
+                    logging.info(
+                        f"{result['coin']}: "
+                        f"交易{result['trades']}次, "
+                        f"報酬{result['total_return']:.2%}, "
+                        f"勝率{result['win_rate']:.2%}"
+                    )
+
+            elif choice == "2":
+                print("\n👁️  開始監控...")
+                monitor = CryptoMonitor(config)
+                monitor.monitor_coins(coin_configs)
+
+            elif choice == "3":
+                print("\n👋 感謝使用！")
+                break
+
+            else:
+                print("❌ 無效選擇，請重新輸入")
+
+        except KeyboardInterrupt:
+            print("\n👋 程式已中斷")
+            break
+        except Exception as e:
+            print(f"❌ 發生錯誤: {e}")
+
+
+if __name__ == "__main__":
+    main()

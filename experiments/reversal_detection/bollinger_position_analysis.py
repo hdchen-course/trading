@@ -1,0 +1,525 @@
+#!/usr/bin/env python3
+"""
+布林通道位置分析
+
+目標：
+使用布林通道 (period=48, std=2.4) 分析 7,043 個候選點的特徵
+對比真實反轉點和假反轉點的差異
+
+分析維度：
+1. 反轉點在布林通道的位置
+2. 當前K線在布林通道的位置
+3. 交叉比較：反轉點位置 vs 當前K線位置
+"""
+
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+import pandas as pd
+import numpy as np
+from improved_stage1 import load_data, find_local_extremes
+
+
+def calculate_bollinger_bands(df, period=48, std_dev=2.4):
+    """
+    計算布林通道
+    
+    Args:
+        df: DataFrame
+        period: 週期（48根K線 = 12小時）
+        std_dev: 標準差倍數（2.4）
+    
+    Returns:
+        middle, upper, lower: 中軌、上軌、下軌
+    """
+    close = df['close']
+    
+    # 中軌 = 移動平均
+    middle = close.rolling(window=period, min_periods=1).mean()
+    
+    # 標準差
+    std = close.rolling(window=period, min_periods=1).std()
+    
+    # 上軌和下軌
+    upper = middle + (std_dev * std)
+    lower = middle - (std_dev * std)
+    
+    return middle, upper, lower
+
+
+def calculate_bb_position(price, middle, upper, lower):
+    """
+    計算價格在布林通道中的位置
+    
+    Returns:
+        position: 0-1 之間的值
+            0 = 下軌
+            0.5 = 中軌
+            1 = 上軌
+    """
+    band_width = upper - lower
+    
+    # 避免除以零
+    if band_width == 0 or np.isnan(band_width):
+        return 0.5
+    
+    position = (price - lower) / band_width
+    
+    # 限制在 0-1 範圍內（價格可能超出布林通道）
+    # 但我們保留超出的值來識別極端情況
+    return position
+
+
+def analyze_bb_features(df, candidates, true_reversals):
+    """
+    分析候選點的布林通道特徵
+    
+    Args:
+        df: DataFrame
+        candidates: 候選點索引列表
+        true_reversals: 真實反轉點索引集合
+    """
+    print("="*80)
+    print("🔬 布林通道位置分析")
+    print("="*80)
+    
+    # 計算布林通道
+    print("\n計算布林通道 (period=48, std=2.4)...")
+    middle, upper, lower = calculate_bollinger_bands(df, period=48, std_dev=2.4)
+    
+    # 提取特徵
+    print("提取特徵...")
+    features = []
+    
+    for cand_idx in candidates:
+        # 找出對應的反轉點（前1-2根K線）
+        reversal_idx = None
+        for offset in [1, 2]:
+            check_idx = cand_idx - offset
+            if check_idx >= 0:
+                # 簡單檢查：假設是局部極值
+                reversal_idx = check_idx
+                break
+        
+        if reversal_idx is None or reversal_idx < 48:
+            continue
+        
+        # 反轉點的布林通道位置
+        rev_price = df['close'].iloc[reversal_idx]
+        rev_bb_pos = calculate_bb_position(
+            rev_price,
+            middle.iloc[reversal_idx],
+            upper.iloc[reversal_idx],
+            lower.iloc[reversal_idx]
+        )
+        
+        # 當前K線的布林通道位置
+        curr_price = df['close'].iloc[cand_idx]
+        curr_bb_pos = calculate_bb_position(
+            curr_price,
+            middle.iloc[cand_idx],
+            upper.iloc[cand_idx],
+            lower.iloc[cand_idx]
+        )
+        
+        # 判斷是否為真陽性
+        is_true = reversal_idx in true_reversals
+        
+        # 判斷反轉點類型（波峰/波谷）
+        lookback = 20
+        if reversal_idx >= lookback:
+            window_prices = df['close'].iloc[reversal_idx-lookback:reversal_idx+1].values
+            rev_price_val = df['close'].iloc[reversal_idx]
+            is_peak = rev_price_val == np.max(window_prices)
+        else:
+            is_peak = None
+        
+        features.append({
+            'cand_idx': cand_idx,
+            'reversal_idx': reversal_idx,
+            'is_true': is_true,
+            'is_peak': is_peak,
+            'rev_bb_pos': rev_bb_pos,
+            'curr_bb_pos': curr_bb_pos,
+            'bb_pos_diff': curr_bb_pos - rev_bb_pos,
+            'rev_above_upper': rev_bb_pos > 1.0,
+            'rev_below_lower': rev_bb_pos < 0.0,
+            'rev_in_upper_band': rev_bb_pos > 0.8,
+            'rev_in_lower_band': rev_bb_pos < 0.2,
+            'curr_above_upper': curr_bb_pos > 1.0,
+            'curr_below_lower': curr_bb_pos < 0.0,
+            'curr_in_upper_band': curr_bb_pos > 0.8,
+            'curr_in_lower_band': curr_bb_pos < 0.2,
+        })
+    
+    df_features = pd.DataFrame(features)
+    
+    print(f"提取了 {len(df_features)} 個候選點的特徵")
+    
+    return df_features
+
+
+def compare_true_vs_false(df_features):
+    """對比真實反轉點和假反轉點的布林通道特徵"""
+    
+    df_true = df_features[df_features['is_true'] == True]
+    df_false = df_features[df_features['is_true'] == False]
+    
+    print(f"\n{'='*80}")
+    print(f"📊 真實 vs 假反轉點對比")
+    print(f"{'='*80}")
+    
+    print(f"\n樣本數量:")
+    print(f"  真陽性: {len(df_true)}")
+    print(f"  假陽性: {len(df_false)}")
+    
+    # 1. 反轉點位置對比
+    print(f"\n{'='*80}")
+    print(f"1. 反轉點在布林通道的位置")
+    print(f"{'='*80}")
+    
+    print(f"\n{'特徵':<40} {'真陽性':<15} {'假陽性':<15} {'差異':<10}")
+    print("-"*80)
+    
+    # 平均位置
+    true_rev_pos = df_true['rev_bb_pos'].mean()
+    false_rev_pos = df_false['rev_bb_pos'].mean()
+    print(f"{'反轉點平均位置':<40} {true_rev_pos:>14.3f} {false_rev_pos:>14.3f} {true_rev_pos-false_rev_pos:>9.3f}")
+    
+    # 極端位置比例
+    true_above = (df_true['rev_above_upper'].sum() / len(df_true) * 100) if len(df_true) > 0 else 0
+    false_above = (df_false['rev_above_upper'].sum() / len(df_false) * 100) if len(df_false) > 0 else 0
+    print(f"{'反轉點超出上軌 (>1.0)':<40} {true_above:>13.1f}% {false_above:>13.1f}% {true_above-false_above:>8.1f}%")
+    
+    true_below = (df_true['rev_below_lower'].sum() / len(df_true) * 100) if len(df_true) > 0 else 0
+    false_below = (df_false['rev_below_lower'].sum() / len(df_false) * 100) if len(df_false) > 0 else 0
+    print(f"{'反轉點低於下軌 (<0.0)':<40} {true_below:>13.1f}% {false_below:>13.1f}% {true_below-false_below:>8.1f}%")
+    
+    true_upper = (df_true['rev_in_upper_band'].sum() / len(df_true) * 100) if len(df_true) > 0 else 0
+    false_upper = (df_false['rev_in_upper_band'].sum() / len(df_false) * 100) if len(df_false) > 0 else 0
+    print(f"{'反轉點在上軌區 (>0.8)':<40} {true_upper:>13.1f}% {false_upper:>13.1f}% {true_upper-false_upper:>8.1f}%")
+    
+    true_lower = (df_true['rev_in_lower_band'].sum() / len(df_true) * 100) if len(df_true) > 0 else 0
+    false_lower = (df_false['rev_in_lower_band'].sum() / len(df_false) * 100) if len(df_false) > 0 else 0
+    print(f"{'反轉點在下軌區 (<0.2)':<40} {true_lower:>13.1f}% {false_lower:>13.1f}% {true_lower-false_lower:>8.1f}%")
+    
+    # 2. 當前K線位置對比
+    print(f"\n{'='*80}")
+    print(f"2. 當前K線在布林通道的位置")
+    print(f"{'='*80}")
+    
+    print(f"\n{'特徵':<40} {'真陽性':<15} {'假陽性':<15} {'差異':<10}")
+    print("-"*80)
+    
+    true_curr_pos = df_true['curr_bb_pos'].mean()
+    false_curr_pos = df_false['curr_bb_pos'].mean()
+    print(f"{'當前K線平均位置':<40} {true_curr_pos:>14.3f} {false_curr_pos:>14.3f} {true_curr_pos-false_curr_pos:>9.3f}")
+    
+    true_curr_upper = (df_true['curr_in_upper_band'].sum() / len(df_true) * 100) if len(df_true) > 0 else 0
+    false_curr_upper = (df_false['curr_in_upper_band'].sum() / len(df_false) * 100) if len(df_false) > 0 else 0
+    print(f"{'當前K線在上軌區 (>0.8)':<40} {true_curr_upper:>13.1f}% {false_curr_upper:>13.1f}% {true_curr_upper-false_curr_upper:>8.1f}%")
+    
+    true_curr_lower = (df_true['curr_in_lower_band'].sum() / len(df_true) * 100) if len(df_true) > 0 else 0
+    false_curr_lower = (df_false['curr_in_lower_band'].sum() / len(df_false) * 100) if len(df_false) > 0 else 0
+    print(f"{'當前K線在下軌區 (<0.2)':<40} {true_curr_lower:>13.1f}% {false_curr_lower:>13.1f}% {true_curr_lower-false_curr_lower:>8.1f}%")
+    
+    # 3. 位置變化對比
+    print(f"\n{'='*80}")
+    print(f"3. 反轉點到當前K線的位置變化")
+    print(f"{'='*80}")
+    
+    print(f"\n{'特徵':<40} {'真陽性':<15} {'假陽性':<15} {'差異':<10}")
+    print("-"*80)
+    
+    true_diff = df_true['bb_pos_diff'].mean()
+    false_diff = df_false['bb_pos_diff'].mean()
+    print(f"{'平均位置變化':<40} {true_diff:>14.3f} {false_diff:>14.3f} {true_diff-false_diff:>9.3f}")
+    
+    # 4. 交叉分析：波峰 vs 波谷
+    print(f"\n{'='*80}")
+    print(f"4. 交叉分析：波峰 vs 波谷")
+    print(f"{'='*80}")
+    
+    # 波峰
+    df_true_peak = df_true[df_true['is_peak'] == True]
+    df_false_peak = df_false[df_false['is_peak'] == True]
+    
+    if len(df_true_peak) > 0 and len(df_false_peak) > 0:
+        print(f"\n波峰 (應該在上軌區):")
+        print(f"  真陽性樣本: {len(df_true_peak)}")
+        print(f"  假陽性樣本: {len(df_false_peak)}")
+        
+        true_peak_pos = df_true_peak['rev_bb_pos'].mean()
+        false_peak_pos = df_false_peak['rev_bb_pos'].mean()
+        print(f"  反轉點平均位置: 真 {true_peak_pos:.3f} vs 假 {false_peak_pos:.3f}")
+        
+        true_peak_upper = (df_true_peak['rev_in_upper_band'].sum() / len(df_true_peak) * 100)
+        false_peak_upper = (df_false_peak['rev_in_upper_band'].sum() / len(df_false_peak) * 100)
+        print(f"  在上軌區比例: 真 {true_peak_upper:.1f}% vs 假 {false_peak_upper:.1f}%")
+    
+    # 波谷
+    df_true_valley = df_true[df_true['is_peak'] == False]
+    df_false_valley = df_false[df_false['is_peak'] == False]
+    
+    if len(df_true_valley) > 0 and len(df_false_valley) > 0:
+        print(f"\n波谷 (應該在下軌區):")
+        print(f"  真陽性樣本: {len(df_true_valley)}")
+        print(f"  假陽性樣本: {len(df_false_valley)}")
+        
+        true_valley_pos = df_true_valley['rev_bb_pos'].mean()
+        false_valley_pos = df_false_valley['rev_bb_pos'].mean()
+        print(f"  反轉點平均位置: 真 {true_valley_pos:.3f} vs 假 {false_valley_pos:.3f}")
+        
+        true_valley_lower = (df_true_valley['rev_in_lower_band'].sum() / len(df_true_valley) * 100)
+        false_valley_lower = (df_false_valley['rev_in_lower_band'].sum() / len(df_false_valley) * 100)
+        print(f"  在下軌區比例: 真 {true_valley_lower:.1f}% vs 假 {false_valley_lower:.1f}%")
+
+
+def suggest_filters(df_features):
+    """根據分析結果建議過濾規則"""
+    
+    df_true = df_features[df_features['is_true'] == True]
+    df_false = df_features[df_features['is_true'] == False]
+    
+    print(f"\n{'='*80}")
+    print(f"💡 過濾規則建議")
+    print(f"{'='*80}")
+    
+    # 測試不同的過濾規則
+    rules = []
+    
+    # 規則1：反轉點在極端位置
+    rule1 = df_features[
+        (df_features['rev_in_upper_band']) | (df_features['rev_in_lower_band'])
+    ]
+    rule1_true = len(rule1[rule1['is_true'] == True])
+    rule1_precision = rule1_true / len(rule1) * 100 if len(rule1) > 0 else 0
+    rule1_coverage = rule1_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '反轉點在極端位置 (>0.8 或 <0.2)',
+        'candidates': len(rule1),
+        'precision': rule1_precision,
+        'coverage': rule1_coverage
+    })
+    
+    # 規則2：反轉點超出布林通道
+    rule2 = df_features[
+        (df_features['rev_above_upper']) | (df_features['rev_below_lower'])
+    ]
+    rule2_true = len(rule2[rule2['is_true'] == True])
+    rule2_precision = rule2_true / len(rule2) * 100 if len(rule2) > 0 else 0
+    rule2_coverage = rule2_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '反轉點超出布林通道 (>1.0 或 <0.0)',
+        'candidates': len(rule2),
+        'precision': rule2_precision,
+        'coverage': rule2_coverage
+    })
+    
+    # 規則3：波峰在上軌區 OR 波谷在下軌區
+    rule3 = df_features[
+        ((df_features['is_peak'] == True) & (df_features['rev_in_upper_band'])) |
+        ((df_features['is_peak'] == False) & (df_features['rev_in_lower_band']))
+    ]
+    rule3_true = len(rule3[rule3['is_true'] == True])
+    rule3_precision = rule3_true / len(rule3) * 100 if len(rule3) > 0 else 0
+    rule3_coverage = rule3_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '波峰在上軌區 OR 波谷在下軌區',
+        'candidates': len(rule3),
+        'precision': rule3_precision,
+        'coverage': rule3_coverage
+    })
+    
+    # 規則4：過濾中軌附近的點 (0.45-0.55)
+    rule4 = df_features[
+        ~((df_features['rev_bb_pos'] >= 0.45) & (df_features['rev_bb_pos'] <= 0.55))
+    ]
+    rule4_true = len(rule4[rule4['is_true'] == True])
+    rule4_precision = rule4_true / len(rule4) * 100 if len(rule4) > 0 else 0
+    rule4_coverage = rule4_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '過濾中軌附近 (0.45-0.55)',
+        'candidates': len(rule4),
+        'precision': rule4_precision,
+        'coverage': rule4_coverage
+    })
+    
+    # 🆕 規則4b：過濾中軌寬範圍 (0.0-0.55)
+    rule4b = df_features[
+        ~((df_features['rev_bb_pos'] >= 0.0) & (df_features['rev_bb_pos'] <= 0.55))
+    ]
+    rule4b_true = len(rule4b[rule4b['is_true'] == True])
+    rule4b_precision = rule4b_true / len(rule4b) * 100 if len(rule4b) > 0 else 0
+    rule4b_coverage = rule4b_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '🆕 過濾中軌寬範圍 (0.0-0.55)',
+        'candidates': len(rule4b),
+        'precision': rule4b_precision,
+        'coverage': rule4b_coverage
+    })
+    
+    # 規則5：反轉點和當前K線都在極端位置
+    rule5 = df_features[
+        ((df_features['rev_in_upper_band']) | (df_features['rev_in_lower_band'])) &
+        ((df_features['curr_in_upper_band']) | (df_features['curr_in_lower_band']))
+    ]
+    rule5_true = len(rule5[rule5['is_true'] == True])
+    rule5_precision = rule5_true / len(rule5) * 100 if len(rule5) > 0 else 0
+    rule5_coverage = rule5_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '反轉點 AND 當前K線都在極端位置',
+        'candidates': len(rule5),
+        'precision': rule5_precision,
+        'coverage': rule5_coverage
+    })
+    
+    # 規則6：反轉點在極端 + 當前K線不在中軌
+    rule6 = df_features[
+        ((df_features['rev_in_upper_band']) | (df_features['rev_in_lower_band'])) &
+        ~((df_features['curr_bb_pos'] >= 0.45) & (df_features['curr_bb_pos'] <= 0.55))
+    ]
+    rule6_true = len(rule6[rule6['is_true'] == True])
+    rule6_precision = rule6_true / len(rule6) * 100 if len(rule6) > 0 else 0
+    rule6_coverage = rule6_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '反轉點極端 + 當前K線不在中軌',
+        'candidates': len(rule6),
+        'precision': rule6_precision,
+        'coverage': rule6_coverage
+    })
+    
+    # 🆕 規則7：反轉點和當前位置的組合分析
+    # 7a: 反轉點極端 + 當前也極端
+    rule7a = df_features[
+        ((df_features['rev_in_upper_band']) | (df_features['rev_in_lower_band'])) &
+        ((df_features['curr_in_upper_band']) | (df_features['curr_in_lower_band']))
+    ]
+    rule7a_true = len(rule7a[rule7a['is_true'] == True])
+    rule7a_precision = rule7a_true / len(rule7a) * 100 if len(rule7a) > 0 else 0
+    rule7a_coverage = rule7a_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '🆕 反轉點極端 + 當前也極端',
+        'candidates': len(rule7a),
+        'precision': rule7a_precision,
+        'coverage': rule7a_coverage
+    })
+    
+    # 7b: 反轉點極端 + 當前在中軌
+    rule7b = df_features[
+        ((df_features['rev_in_upper_band']) | (df_features['rev_in_lower_band'])) &
+        ((df_features['curr_bb_pos'] >= 0.45) & (df_features['curr_bb_pos'] <= 0.55))
+    ]
+    rule7b_true = len(rule7b[rule7b['is_true'] == True])
+    rule7b_precision = rule7b_true / len(rule7b) * 100 if len(rule7b) > 0 else 0
+    rule7b_coverage = rule7b_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '🆕 反轉點極端 + 當前在中軌',
+        'candidates': len(rule7b),
+        'precision': rule7b_precision,
+        'coverage': rule7b_coverage
+    })
+    
+    # 7c: 反轉點在中軌 + 當前極端
+    rule7c = df_features[
+        ((df_features['rev_bb_pos'] >= 0.45) & (df_features['rev_bb_pos'] <= 0.55)) &
+        ((df_features['curr_in_upper_band']) | (df_features['curr_in_lower_band']))
+    ]
+    rule7c_true = len(rule7c[rule7c['is_true'] == True])
+    rule7c_precision = rule7c_true / len(rule7c) * 100 if len(rule7c) > 0 else 0
+    rule7c_coverage = rule7c_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '🆕 反轉點在中軌 + 當前極端',
+        'candidates': len(rule7c),
+        'precision': rule7c_precision,
+        'coverage': rule7c_coverage
+    })
+    
+    # 7d: 兩者都在中軌
+    rule7d = df_features[
+        ((df_features['rev_bb_pos'] >= 0.45) & (df_features['rev_bb_pos'] <= 0.55)) &
+        ((df_features['curr_bb_pos'] >= 0.45) & (df_features['curr_bb_pos'] <= 0.55))
+    ]
+    rule7d_true = len(rule7d[rule7d['is_true'] == True])
+    rule7d_precision = rule7d_true / len(rule7d) * 100 if len(rule7d) > 0 else 0
+    rule7d_coverage = rule7d_true / len(df_true) * 100 if len(df_true) > 0 else 0
+    
+    rules.append({
+        'name': '🆕 兩者都在中軌',
+        'candidates': len(rule7d),
+        'precision': rule7d_precision,
+        'coverage': rule7d_coverage
+    })
+    
+    # 顯示結果
+    print(f"\n總共有 {len(rules)} 個規則")
+    print(f"\n{'規則':<50} {'候選點':>10} {'精確度':>10} {'覆蓋率':>10}")
+    print("-"*90)
+    
+    for i, rule in enumerate(rules):
+        print(f"{rule['name']:<50} {rule['candidates']:>10} {rule['precision']:>9.1f}% {rule['coverage']:>9.1f}%")
+    
+    print(f"\n基準 (無過濾):")
+    baseline_precision = len(df_true) / len(df_features) * 100
+    print(f"  候選點: {len(df_features)}")
+    print(f"  精確度: {baseline_precision:.1f}%")
+    print(f"  覆蓋率: 100.0%")
+
+
+def main():
+    """主函數"""
+    # 載入數據
+    df = load_data()
+    if df is None:
+        return
+    
+    true_reversals = set(np.where(df['reverse'].values)[0])
+    
+    print(f"\n數據概況:")
+    print(f"  總數據點: {len(df)}")
+    print(f"  真實反轉點: {len(true_reversals)}")
+    
+    # 生成候選點（使用階段1的方法）
+    print("\n生成候選點...")
+    prices = df['close'].values
+    extremes, peaks, valleys = find_local_extremes(prices, distance=20)
+    
+    candidates = []
+    for i in range(20, len(df)):
+        for offset in [1, 2]:
+            check_idx = i - offset
+            if check_idx in extremes:
+                if i not in candidates:
+                    candidates.append(i)
+                break
+    
+    print(f"  候選點數量: {len(candidates)}")
+    
+    # 分析布林通道特徵
+    df_features = analyze_bb_features(df, candidates, true_reversals)
+    
+    # 對比真實 vs 假反轉點
+    compare_true_vs_false(df_features)
+    
+    # 建議過濾規則
+    try:
+        suggest_filters(df_features)
+    except Exception as e:
+        print(f"\n❌ 錯誤: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+if __name__ == '__main__':
+    main()
