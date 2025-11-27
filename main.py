@@ -103,6 +103,10 @@ def main():
   4. 視覺化模式:
      python main.py --visualize --start 2025-11-01 --end 2025-11-10
      python main.py --visualize --start 2025-11-01 --end 2025-11-10 --methods macd lstm --output chart.png
+  
+  5. 生成訓練數據:
+     python main.py --generate-data
+     python main.py --generate-data --start 2022-01-01 --end 2025-09-01 --interval 15m --window 16
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -116,6 +120,12 @@ def main():
     parser.add_argument("--methods", type=str, nargs="+", 
                        choices=["macd", "lstm", "volume", "btc", "peak", "triple"],
                        help="檢測方法 (visualize 模式使用，默認全部)")
+    parser.add_argument("--generate-data", action="store_true", help="生成訓練數據模式")
+    parser.add_argument("--interval", type=str, default="15m",
+                       choices=["15m", "1h", "4h", "1d"],
+                       help="K線間隔 (generate-data 模式使用，默認 15m)")
+    parser.add_argument("--window", type=int, default=16,
+                       help="窗口大小 (generate-data 模式使用，默認 16)")
     args = parser.parse_args()
 
     if args.debug:
@@ -138,6 +148,18 @@ def main():
             return
         from scripts.visualize import run_visualization
         run_visualization(args.start_date, args.end_date, args.methods, args.output)
+        return
+    
+    if args.generate_data:
+        from utils.generate_training_data import main as generate_data_main
+        start_date = args.start_date or "2022-01-01"
+        end_date = args.end_date or "2025-09-01"
+        generate_data_main(
+            start_date=start_date,
+            end_date=end_date,
+            interval=args.interval,
+            window_size=args.window
+        )
         return
 
     config = TradingConfig()

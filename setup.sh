@@ -6,7 +6,7 @@ VENV_DIR="venv"
 # 檢查 venv 是否存在
 if [ ! -d "$VENV_DIR" ]; then
     echo "🔧 虛擬環境不存在，正在建立..."
-    /opt/homebrew/opt/python@3.12/libexec/bin/python -m venv "$VENV_DIR"
+    python3.12 -m venv "$VENV_DIR"
 fi
 
 # 啟動 venv
