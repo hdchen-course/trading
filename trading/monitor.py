@@ -102,6 +102,11 @@ class CryptoMonitor:
             logging.error(f"❌ 無法取得 {coin_config.symbol} 數據")
             return
 
+        # 統一計算所有技術指標（避免每個策略重複計算）
+        from utils.indicators import calculate_technical_indicators, analyze_cumulative_metrics
+        df = calculate_technical_indicators(df)
+        df = analyze_cumulative_metrics(df, window_size=16)
+
         # 提取當前價格和時間戳
         current_price = df["close"].iloc[-1]  # 最新收盤價
         # 將 UTC 時間轉換為 UTC+8 (台北時間)
