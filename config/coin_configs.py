@@ -31,20 +31,21 @@ from strategies import (
     TripleConfirmationBuyStrategy,
     TripleConfirmationSellStrategy,
 )
+from strategies.ml import MLReversalV2Strategy
 
 
 def create_coin_configs() -> list:
     """創建各幣種的策略配置"""
 
-    # BTC - 基於180天回測結果優化 - Top 10 策略（平均勝率49.87%）
-    # 新評分系統：勝率70% + 每次交易平均報酬30%
+    # BTC - 核心策略組合（6個精選策略）
+    # 權重 = 勝率（歸一化）
+    # 總勝率: 1.00 + 0.858 + 0.669 + 0.544 + 0.50 + 0.357 = 3.928
     btc_strategies = [
-        # 🥇 超高勝率策略 - 合計37.63%權重
         ReversalStrategy(
             StrategyConfig(
                 name="Reversal A/V Turn",
                 params={},
-                weight=0.2012,  # 100.00% 勝率, 41.70% 報酬, 平均3.47%/交易 - 完美勝率！
+                weight=1.00 / 3.928,  # 100.00% 勝率 → 25.46% 權重 (12次交易)
             )
         ),
         TripleConfirmationStrategy(
@@ -55,80 +56,39 @@ def create_coin_configs() -> list:
                     "window_size": 16,
                     "signal_type": "both"
                 },
-                weight=0.1751,  # 85.71% 勝率, 985.21% 報酬, 平均6.12%/交易 - 最高質量！
+                weight=0.858 / 3.928,  # 85.80% 勝率 → 21.84% 權重 (162次交易)
             )
         ),
-        
-        # 🥈 高表現策略 - 合計26.27%權重
-        MacdVolumeStrategy(
+        MLReversalV2Strategy(
             StrategyConfig(
-                name="MACD Volume Detection",
-                params={},
-                weight=0.0924,  # 46.43% 勝率, 12.42% 報酬, 平均0.44%/交易
+                name="ML Reversal V2",
+                params={
+                    "distance": 20,
+                    "window_size": 16,
+                    "signal_type": "both"
+                },
+                weight=0.669 / 3.928,  # 66.89% 勝率 → 17.03% 權重 (296次交易)
             )
         ),
         MLReversalStrategy(
             StrategyConfig(
                 name="ML Reversal A/V Turn",
                 params={},
-                weight=0.0906,  # 44.66% 勝率, 1754.14% 報酬, 平均2.46%/交易
+                weight=0.544 / 3.928,  # 54.40% 勝率 → 13.85% 權重 (1557次交易)
+            )
+        ),
+        MacdVolumeStrategy(
+            StrategyConfig(
+                name="MACD Volume Detection",
+                params={},
+                weight=0.50 / 3.928,  # 50.00% 勝率 → 12.73% 權重 (28次交易)
             )
         ),
         MacdReversalStrategy(
             StrategyConfig(
                 name="MACD Reversal Detection",
                 params={},
-                weight=0.0797,  # 40.00% 勝率, 23.07% 報酬, 平均0.51%/交易
-            )
-        ),
-        LSTMStrategy(
-            StrategyConfig(
-                name="LSTM Detection",
-                params={},
-                weight=0.0762,  # 38.36% 勝率, 26.04% 報酬, 平均0.18%/交易
-            )
-        ),
-        CrashPredictionStrategy(
-            StrategyConfig(
-                name="8H Crash Prediction",
-                params={
-                    "crash_threshold": 0.75,
-                },
-                weight=0.0736,  # 37.09% 勝率, 31.91% 報酬, 平均0.12%/交易
-            )
-        ),
-        
-        # 🥉 穩定策略 - 合計36.10%權重
-        StochRSIStrategy(
-            StrategyConfig(
-                name="Stochastic RSI",
-                params={
-                    "rsi_period": 14,
-                    "stoch_period": 14,
-                    "k_period": 3,
-                    "d_period": 3,
-                    "oversold": 5,
-                    "overbought": 95,
-                },
-                weight=0.0733,  # 36.94% 勝率, 156.83% 報酬, 平均0.16%/交易
-            )
-        ),
-        ATRStrategy(
-            StrategyConfig(
-                name="ATR Breakout",
-                params={"atr_period": 14, "multiplier": 2.0},
-                weight=0.0695,  # 34.99% 勝率, 134.73% 報酬, 平均0.19%/交易
-            )
-        ),
-        TrendMLStrategy(
-            StrategyConfig(
-                name="Trend ML",
-                params={
-                    "ema_fast": 20,
-                    "ema_slow": 50,
-                    "model_threshold": 0.7,
-                },
-                weight=0.0684,  # 34.48% 勝率, 67.43% 報酬, 平均0.05%/交易
+                weight=0.357 / 3.928,  # 35.71% 勝率 → 9.09% 權重 (42次交易)
             )
         ),
     ]

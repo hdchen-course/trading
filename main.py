@@ -12,6 +12,7 @@
 
 import argparse
 import logging
+import os
 from dataclasses import dataclass
 
 import matplotlib
@@ -107,6 +108,10 @@ def main():
   5. 生成訓練數據:
      python main.py --generate-data
      python main.py --generate-data --start 2022-01-01 --end 2025-09-01 --interval 15m --window 16
+  
+  6. 分析信號強度:
+     python main.py --analyze-strength latest
+     python main.py --analyze-strength output/trades_BTCUSDT_Combined_20251128_210145.csv
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -126,10 +131,31 @@ def main():
                        help="K線間隔 (generate-data 模式使用，默認 15m)")
     parser.add_argument("--window", type=int, default=16,
                        help="窗口大小 (generate-data 模式使用，默認 16)")
+    parser.add_argument("--analyze-strength", type=str, metavar="CSV_FILE",
+                       help="分析交易記錄的信號強度 (指定 CSV 文件路徑，或使用 'latest' 自動選擇最新文件)")
     args = parser.parse_args()
 
     if args.debug:
         debug_mode(args.days)
+        return
+    
+    if args.analyze_strength:
+        from utils.signal_strength_analyzer import analyze_signal_strength
+        import glob
+        
+        if args.analyze_strength.lower() == 'latest':
+            # 自動選擇最新的 Combined 文件
+            files = glob.glob("output/trades_*_Combined_*.csv")
+            if files:
+                csv_file = max(files, key=os.path.getctime)
+                print(f"📁 使用最新的交易記錄: {csv_file}\n")
+            else:
+                print("❌ 找不到交易記錄文件")
+                return
+        else:
+            csv_file = args.analyze_strength
+        
+        analyze_signal_strength(csv_file)
         return
     
     if args.analyze:

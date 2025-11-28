@@ -5,6 +5,7 @@
 
 from .trend import TrendMLStrategy, TrendPredictionStrategy, SeparateTrendStrategy
 from .reversal import ReversalStrategy, MLReversalStrategy
+from .ml_reversal_v2 import MLReversalV2Strategy, MLReversalV2BuyStrategy, MLReversalV2SellStrategy
 from .crash import CrashPredictionStrategy
 from .lstm import LSTMStrategy
 
@@ -14,6 +15,9 @@ __all__ = [
     "SeparateTrendStrategy",
     "ReversalStrategy",
     "MLReversalStrategy",
+    "MLReversalV2Strategy",
+    "MLReversalV2BuyStrategy",
+    "MLReversalV2SellStrategy",
     "CrashPredictionStrategy",
     "LSTMStrategy",
 ]
