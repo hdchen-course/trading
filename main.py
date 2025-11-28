@@ -230,8 +230,21 @@ def main():
 
             elif choice == "2":
                 print("\n👁️  開始監控...")
+                
+                # 過濾啟用監控的幣種
+                enabled_configs = [c for c in coin_configs if c.enable_monitor]
+                
+                if not enabled_configs:
+                    print("❌ 沒有啟用監控的幣種")
+                    print("請在 config/coin_configs.py 中設置 enable_monitor=True")
+                    continue
+                
+                print(f"\n🔍 監控以下幣種:")
+                for c in enabled_configs:
+                    print(f"  - {c.name} ({c.symbol})")
+                
                 monitor = CryptoMonitor(config)
-                monitor.monitor_coins(coin_configs)
+                monitor.monitor_coins(enabled_configs)
 
             elif choice == "3":
                 print("\n👋 感謝使用！")

@@ -107,12 +107,14 @@ class CoinConfig:
         symbol: 交易對符號
         strategies: 策略列表
         leverage: 槓桿倍數
+        enable_monitor: 是否啟用監控
     """
 
     name: str
     symbol: str
     strategies: List[BaseStrategy]
     leverage: float = 1.0
+    enable_monitor: bool = True
 
 
 class StrategyManager:
@@ -155,14 +157,17 @@ class StrategyManager:
         Returns:
             Tuple[float, float, float]: (最新信號, 買入強度, 賣出強度)
         """
-        signals, _, _ = self.generate_combined_signal_vectorized(df, coin_config)
+        signals, signal_strength, _, _ = self.generate_combined_signal_vectorized(df, coin_config)
 
         if len(signals) == 0:
-            return 0, 0, 0
+            return 0, 0.0, 0.0
 
         latest_signal = signals.iloc[-1]
-        buy_strength = 1.0 if latest_signal == 1 else 0.0
-        sell_strength = 1.0 if latest_signal == -1 else 0.0
+        latest_strength = signal_strength.iloc[-1]
+        
+        # 根據信號方向分配強度
+        buy_strength = latest_strength if latest_signal == 1 else 0.0
+        sell_strength = latest_strength if latest_signal == -1 else 0.0
 
         return latest_signal, buy_strength, sell_strength
 

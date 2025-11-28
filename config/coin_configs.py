@@ -184,10 +184,10 @@ def create_coin_configs() -> list:
     ]
 
     return [
-        CoinConfig("Bitcoin", "BTCUSDT", btc_strategies, 10),  # 10倍槓桿
-        CoinConfig("Ethereum", "ETHUSDT", eth_strategies, 8),  # 8倍槓桿
-        CoinConfig("Solana", "SOLUSDT", sol_strategies, 6),  # 6倍槓桿
-        CoinConfig("Sui", "SUIUSDT", sui_strategies, 5),  # 5倍槓桿
+        CoinConfig("Bitcoin", "BTCUSDT", btc_strategies, 10, enable_monitor=True),  # 10倍槓桿，啟用監控
+        CoinConfig("Ethereum", "ETHUSDT", eth_strategies, 8, enable_monitor=False),  # 8倍槓桿，暫不監控
+        CoinConfig("Solana", "SOLUSDT", sol_strategies, 6, enable_monitor=False),  # 6倍槓桿，暫不監控
+        CoinConfig("Sui", "SUIUSDT", sui_strategies, 5, enable_monitor=False),  # 5倍槓桿，暫不監控
     ]
 
 
