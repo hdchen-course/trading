@@ -100,6 +100,10 @@ def calculate_technical_indicators(df):
         df["bb_upper"] - df["bb_lower"]
     )
 
+    # 成交量指標
+    df["volume_sma"] = df["volume"].rolling(window=20).mean()
+    df["volume_ratio"] = df["volume"] / df["volume_sma"]
+
     return df
 
 

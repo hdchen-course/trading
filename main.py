@@ -118,7 +118,7 @@ def main():
     parser.add_argument("--end", "--end-date", type=str, dest="end_date", help="結束日期 (YYYY-MM-DD)")
     parser.add_argument("--output", type=str, help="輸出文件路徑 (CSV 或 PNG)")
     parser.add_argument("--methods", type=str, nargs="+", 
-                       choices=["macd", "lstm", "volume", "btc", "peak", "triple"],
+                       choices=["macd", "lstm", "volume", "btc", "peak", "triple", "ml"],
                        help="檢測方法 (visualize 模式使用，默認全部)")
     parser.add_argument("--generate-data", action="store_true", help="生成訓練數據模式")
     parser.add_argument("--interval", type=str, default="15m",

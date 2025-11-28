@@ -16,6 +16,7 @@ from detection import (
     BTCMACDBuyDetection,
     PeakValleyDetection,
     TripleConfirmationReversalDetector,
+    MLReversalDetector,
 )
 
 warnings.filterwarnings("ignore")
@@ -364,6 +365,7 @@ def run_visualization(start_date_str, end_date_str, methods=None, output_file=No
         "btc": BTCMACDBuyDetection(),
         "peak": PeakValleyDetection(distance=20, height_threshold=0.001),
         "triple": TripleConfirmationReversalDetector(distance=20, window_size=16),
+        "ml": MLReversalDetector(distance=20, window_size=16),
     }
 
     # 使用默認方法如果沒有指定 - 默認使用全部方法

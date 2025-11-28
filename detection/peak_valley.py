@@ -2,6 +2,24 @@
 """
 Peak Valley Detection Methods
 波峰波谷檢測方法
+
+⚠️ 重要說明：
+這個檢測器是用於「事後分析」和「自動標籤」的工具，不是用於實時交易！
+
+用途：
+1. 自動標記歷史數據中的真實反轉點（Ground Truth）
+2. 為機器學習模型生成訓練標籤
+3. 評估其他檢測方法的準確度和召回率
+
+特點：
+- 使用 scipy.signal.find_peaks 找出價格的局部極值
+- 需要完整的歷史數據才能準確識別波峰波谷
+- 無法在實時交易中使用（因為需要看到未來的價格才能確認極值）
+
+實時交易應使用：
+- TripleConfirmationReversalDetector
+- MLReversalDetector
+- 或其他前瞻性檢測方法
 """
 
 import numpy as np
@@ -12,7 +30,12 @@ from utils.indicators import analyze_cumulative_metrics
 
 
 class PeakValleyDetection(DetectionMethod):
-    """波峰波谷檢測 - 使用scipy.signal自動找A轉V轉點"""
+    """
+    波峰波谷檢測 - 使用 scipy.signal 自動找 A 轉 V 轉點
+    
+    ⚠️ 這是事後分析工具，用於自動標記真實反轉點（Ground Truth）
+    不適用於實時交易，因為需要看到未來價格才能確認極值點
+    """
 
     def __init__(self, distance=20, prominence=None, height_threshold=0.02):
         """

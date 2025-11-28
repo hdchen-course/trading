@@ -19,9 +19,8 @@ Stage 2: Price_2nd AND Vol_2nd AND MACD_2nd 過濾（高精確度 81.2%）
 
 import numpy as np
 import pandas as pd
-from scipy.signal import find_peaks
-from typing import Tuple
 from utils.indicators import calculate_technical_indicators, analyze_cumulative_metrics
+from utils.extremes import find_local_extremes
 from .base import DetectionMethod
 
 
@@ -45,29 +44,7 @@ class TripleConfirmationReversalDetector(DetectionMethod):
         self.distance = distance
         self.window_size = window_size
     
-    def _find_local_extremes(self, prices: np.ndarray) -> Tuple[set, set, set]:
-        """
-        Stage 1: 尋找局部極值點（峰和谷）
-        
-        Args:
-            prices: 價格序列
-            
-        Returns:
-            extremes: 所有極值點的集合
-            peaks: 峰值點的集合
-            valleys: 谷值點的集合
-        """
-        # 找峰值
-        peaks_idx, _ = find_peaks(prices, distance=self.distance)
-        
-        # 找谷值（反轉價格序列）
-        valleys_idx, _ = find_peaks(-prices, distance=self.distance)
-        
-        peaks = set(peaks_idx)
-        valleys = set(valleys_idx)
-        extremes = peaks | valleys
-        
-        return extremes, peaks, valleys
+
     
     def detect(self, df: pd.DataFrame) -> np.ndarray:
         """
@@ -92,7 +69,7 @@ class TripleConfirmationReversalDetector(DetectionMethod):
         
         # Stage 1: 找局部極值
         prices = df['close'].values
-        extremes, peaks, valleys = self._find_local_extremes(prices)
+        extremes, peaks, valleys = find_local_extremes(prices, distance=self.distance)
         
         # 創建極值標記數組（用於快速查找）
         is_extreme = np.zeros(n, dtype=bool)

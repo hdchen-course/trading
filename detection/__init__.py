@@ -14,6 +14,7 @@ from .optimal_reversal import (
     PositionBBReversalDetection,
 )
 from .triple_confirmation_reversal import TripleConfirmationReversalDetector
+from .ml_reversal import MLReversalDetector
 
 __all__ = [
     "DetectionMethod",
@@ -27,4 +28,5 @@ __all__ = [
     "RSIBBReversalDetection",
     "PositionBBReversalDetection",
     "TripleConfirmationReversalDetector",
+    "MLReversalDetector",
 ]
