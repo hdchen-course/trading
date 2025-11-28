@@ -123,74 +123,71 @@ def calculate_z_score(series, window=200):
 
 
 def analyze_cumulative_metrics(df, window_size=16):
-    """分析累計技術指標"""
+    """
+    分析累計技術指標
+    
+    改進版：保留所有數據，前面無法計算的部分填 NaN
+    這樣可以保持與原始 df 相同的長度和索引對齊
+    """
     n = len(df)
     if n < window_size:
         raise ValueError(f"Data length {n} is less than window size {window_size}")
 
+    # 使用 rolling 計算，自動處理前面的 NaN
     results = {
-        "period": range(window_size, n + 1),
-        "timestamp": df["timestamp"].iloc[window_size - 1 :].values,
-        "close_price": df["close"].iloc[window_size - 1 :].values,
-        "ema_100": df["ema_100"].iloc[window_size - 1 :].values,
-        "ema_50": df["ema_50"].iloc[window_size - 1 :].values,
+        "period": range(1, n + 1),
+        "timestamp": df["timestamp"].values,
+        "close_price": df["close"].values,
+        "ema_100": df["ema_100"].values,
+        "ema_50": df["ema_50"].values,
         "avg_amplitude": df["amplitude"]
-        .rolling(window=window_size)
+        .rolling(window=window_size, min_periods=1)
         .mean()
-        .iloc[window_size - 1 :]
         .values,
         "avg_volume": df["volume"]
-        .rolling(window=window_size)
+        .rolling(window=window_size, min_periods=1)
         .mean()
-        .iloc[window_size - 1 :]
         .values,
         "avg_macd": df["macd"]
-        .rolling(window=window_size)
+        .rolling(window=window_size, min_periods=1)
         .mean()
-        .iloc[window_size - 1 :]
         .values,
         "avg_rsi": df["rsi"]
-        .rolling(window=window_size)
+        .rolling(window=window_size, min_periods=1)
         .mean()
-        .iloc[window_size - 1 :]
         .values,
         "price_above_sar_ratio": df["price_above_sar"]
-        .rolling(window=window_size)
+        .rolling(window=window_size, min_periods=1)
         .mean()
-        .iloc[window_size - 1 :]
         .values,
         "avg_bb_position": df["bb_position"]
-        .rolling(window=window_size)
+        .rolling(window=window_size, min_periods=1)
         .mean()
-        .iloc[window_size - 1 :]
         .values,
         "volatility": df["close"]
         .pct_change()
-        .rolling(window=window_size)
+        .rolling(window=window_size, min_periods=1)
         .std()
-        .iloc[window_size - 1 :]
         .values,
     }
 
-    # 計算窗口內價格變化百分比
-    results["price_change_pct"] = calculate_price_change_pct(df, window_size)[
-        window_size - 1 :
-    ]
+    # 計算窗口內價格變化百分比（保留所有數據）
+    results["price_change_pct"] = calculate_price_change_pct(df, window_size)
 
-    # 計算1小時前價格變化相對ATR比值
+    # 計算1小時前價格變化相對ATR比值（保留所有數據）
     price_atr_ratio_1h = calculate_price_atr_ratio_1h(df)
-    results["price_atr_ratio_1h"] = price_atr_ratio_1h.iloc[window_size - 1 :].values
+    results["price_atr_ratio_1h"] = price_atr_ratio_1h.values
 
-    # 計算成交量趨勢
+    # 計算成交量趨勢（保留所有數據）
     volume_trend = calculate_volume_trend(df, window_size)
-    results["volume_trend"] = volume_trend[window_size - 1 :]
+    results["volume_trend"] = volume_trend
 
     # 計算二階導數 (加速度) 並標準化為z-score
     macd_series = pd.Series(results["avg_macd"])
     price_series = pd.Series(results["close_price"])
     volume_trend_series = pd.Series(results["volume_trend"])
     atr_series = pd.Series(
-        df["atr"].rolling(window=window_size).mean().iloc[window_size - 1 :].values
+        df["atr"].rolling(window=window_size, min_periods=1).mean().values
     )
 
     # 計算原始二階導數
@@ -205,10 +202,10 @@ def analyze_cumulative_metrics(df, window_size=16):
     results["vol_2nd"] = calculate_z_score(vol_2nd_raw, window=200).values
     results["atr_2nd"] = calculate_z_score(atr_2nd_raw, window=200).values
 
-    # 把原始df中對應時間點的所有欄位複製到results中（除了timestamp和已存在的欄位）
-    df_slice = df.iloc[window_size - 1:]
+    # 把原始df中所有欄位複製到results中（除了timestamp和已存在的欄位）
+    # 改進：不再 slice，保持完整長度
     for col in df.columns:
         if col != 'timestamp' and col not in results:
-            results[col] = df_slice[col].values
+            results[col] = df[col].values
 
     return pd.DataFrame(results)

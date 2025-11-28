@@ -62,7 +62,8 @@ class TripleConfirmationStrategy(BaseStrategy):
         生成交易信號
         
         Args:
-            df: 包含 OHLCV 數據的 DataFrame
+            df: 包含 OHLCV 數據和所有技術指標的 DataFrame
+                必須已經調用 calculate_technical_indicators() 和 analyze_cumulative_metrics()
             
         Returns:
             pd.Series: 交易信號序列
@@ -70,8 +71,14 @@ class TripleConfirmationStrategy(BaseStrategy):
                      -1 = 賣出信號（峰頂反轉）
                       0 = 無信號
         """
-        # 確保技術指標已計算
-        df = calculate_technical_indicators(df)
+        # 檢查必要的欄位是否存在
+        required_cols = ['price_2nd', 'vol_2nd', 'macd_2nd']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call calculate_technical_indicators() and analyze_cumulative_metrics() before generating signals."
+            )
         
         # 執行檢測
         signal_mask = self.detector.detect(df)
@@ -159,7 +166,15 @@ class TripleConfirmationBuyStrategy(BaseStrategy):
     
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         """生成買入信號"""
-        df = calculate_technical_indicators(df)
+        # 檢查必要的欄位是否存在
+        required_cols = ['price_2nd', 'vol_2nd', 'macd_2nd']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call calculate_technical_indicators() and analyze_cumulative_metrics() before generating signals."
+            )
+        
         signal_mask = self.detector.detect(df)
         
         signals = pd.Series(0, index=df.index)
@@ -214,7 +229,15 @@ class TripleConfirmationSellStrategy(BaseStrategy):
     
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         """生成賣出信號"""
-        df = calculate_technical_indicators(df)
+        # 檢查必要的欄位是否存在
+        required_cols = ['price_2nd', 'vol_2nd', 'macd_2nd']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call calculate_technical_indicators() and analyze_cumulative_metrics() before generating signals."
+            )
+        
         signal_mask = self.detector.detect(df)
         
         signals = pd.Series(0, index=df.index)

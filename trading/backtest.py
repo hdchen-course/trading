@@ -115,6 +115,11 @@ class CryptoBacktester:
             Tuple[List, float, float]: (交易記錄列表, 總報酬率, 勝率)
         """
         """向量化回測策略 - 高性能版本"""
+        
+        # 統一計算所有技術指標（避免每個策略重複計算）
+        from utils.indicators import calculate_technical_indicators, analyze_cumulative_metrics
+        df = calculate_technical_indicators(df)
+        df = analyze_cumulative_metrics(df, window_size=16)
 
         # 一次性計算所有信號 (向量化)
         if len(coin_config.strategies) == 1:
@@ -133,7 +138,7 @@ class CryptoBacktester:
             )
             
             # 信號強度閾值過濾 - 只保留強度 >= 0.3 的信號（僅用於多策略組合）
-            SIGNAL_STRENGTH_THRESHOLD = 0.3
+            SIGNAL_STRENGTH_THRESHOLD = 0.18
             signals = signals.where(signal_strength >= SIGNAL_STRENGTH_THRESHOLD, 0)
 
         # 向量化回測邏輯

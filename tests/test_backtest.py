@@ -108,8 +108,10 @@ def test_long_case_1():
             "high": [p * 1.001 for p in prices],
             "low": [p * 0.999 for p in prices],
             "close": prices,
+            "volume": [1000000.0] * len(prices),
         }
     )
+    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
 
     strategy = MockStrategy(buy_signals=[50])
     coin_config = CoinConfig("Test", "TESTUSDT", [strategy], 10)
@@ -139,8 +141,10 @@ def test_long_case_2():
             "high": [p * 1.001 for p in prices],
             "low": [p * 0.999 for p in prices],
             "close": prices,
+            "volume": [1000000.0] * len(prices),
         }
     )
+    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
 
     strategy = MockStrategy(buy_signals=[50])
     coin_config = CoinConfig("Test", "TESTUSDT", [strategy], 10)
@@ -186,8 +190,10 @@ def test_long_case_3():
             "high": [p * 1.001 for p in prices],
             "low": [p * 0.999 for p in prices],
             "close": prices,
+            "volume": [1000000.0] * len(prices),
         }
     )
+    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
 
     strategy = MockStrategy(buy_signals=[50])
     coin_config = CoinConfig("Test", "TESTUSDT", [strategy], 10)
@@ -244,8 +250,10 @@ def test_long_case_4():
             "high": [p * 1.001 for p in prices],
             "low": [p * 0.999 for p in prices],
             "close": prices,
+            "volume": [1000000.0] * len(prices),
         }
     )
+    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
 
     strategy = MockStrategy(buy_signals=[50])
     coin_config = CoinConfig("Test", "TESTUSDT", [strategy], 10)
@@ -285,8 +293,10 @@ def test_short_case_1():
             "high": [p * 1.001 for p in prices],
             "low": [p * 0.999 for p in prices],
             "close": prices,
+            "volume": [1000000.0] * len(prices),
         }
     )
+    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
 
     strategy = MockStrategy(sell_signals=[50])
     coin_config = CoinConfig("Test", "TESTUSDT", [strategy], 10)
@@ -316,8 +326,10 @@ def test_short_case_2():
             "high": [p * 1.001 for p in prices],
             "low": [p * 0.999 for p in prices],
             "close": prices,
+            "volume": [1000000.0] * len(prices),
         }
     )
+    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
 
     strategy = MockStrategy(sell_signals=[50])
     coin_config = CoinConfig("Test", "TESTUSDT", [strategy], 10)
@@ -358,8 +370,10 @@ def test_short_case_3():
             "high": [p * 1.001 for p in prices],
             "low": [p * 0.999 for p in prices],
             "close": prices,
+            "volume": [1000000.0] * len(prices),
         }
     )
+    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
 
     strategy = MockStrategy(sell_signals=[50])
     coin_config = CoinConfig("Test", "TESTUSDT", [strategy], 10)
@@ -411,8 +425,10 @@ def test_short_case_4():
             "high": [p * 1.001 for p in prices],
             "low": [p * 0.999 for p in prices],
             "close": prices,
+            "volume": [1000000.0] * len(prices),
         }
     )
+    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
 
     strategy = MockStrategy(sell_signals=[50])
     coin_config = CoinConfig("Test", "TESTUSDT", [strategy], 10)

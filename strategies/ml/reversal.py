@@ -118,7 +118,7 @@ class ReversalStrategy(BaseStrategy):
 class MLReversalStrategy(BaseStrategy):
     """基於機器學習的A/V轉折預測策略"""
 
-    def __init__(self, config: StrategyConfig, model_path="models/reversal/reversal_model_v2.pkl"):
+    def __init__(self, config: StrategyConfig, model_path="models/reversal/reversal_model_v1.pkl"):
         super().__init__(config)
         self.model = None
         self.load_model(model_path)
@@ -137,52 +137,64 @@ class MLReversalStrategy(BaseStrategy):
 
     def calculate_features(self, df):
         """計算模型所需特徵"""
-        # RSI
-        df["rsi"] = ta.rsi(df["close"], length=14)
+        # RSI（如果不存在才計算）
+        if "rsi" not in df.columns:
+            df["rsi"] = ta.rsi(df["close"], length=14)
 
-        # MACD
-        macd_data = ta.macd(df["close"])
-        df["macd"] = macd_data["MACD_12_26_9"]
-        df["macd_hist"] = macd_data["MACDh_12_26_9"]
+        # MACD（如果不存在才計算）
+        if "macd" not in df.columns or "macd_hist" not in df.columns:
+            # 檢查是否已有 macd_histogram（來自 calculate_technical_indicators）
+            if "macd_histogram" in df.columns:
+                df["macd_hist"] = df["macd_histogram"]  # 使用別名
+            else:
+                macd_data = ta.macd(df["close"])
+                df["macd"] = macd_data["MACD_12_26_9"]
+                df["macd_hist"] = macd_data["MACDh_12_26_9"]
 
-        # 布林帶
-        bb_data = ta.bbands(df["close"], length=20)
-        if bb_data is not None and len(bb_data.columns) >= 3:
-            df["bb_upper"] = bb_data.iloc[:, -1]  # 最後一列通常是上軌
-            df["bb_lower"] = bb_data.iloc[:, 0]  # 第一列通常是下軌
-            df["bb_middle"] = bb_data.iloc[:, 1]  # 中間列是中軌
-        else:
-            # 手動計算布林帶
-            df["bb_middle"] = df["close"].rolling(20).mean()
-            bb_std = df["close"].rolling(20).std()
-            df["bb_upper"] = df["bb_middle"] + (bb_std * 2)
-            df["bb_lower"] = df["bb_middle"] - (bb_std * 2)
+        # 布林帶（如果不存在才計算）
+        if "bb_position" not in df.columns:
+            if "bb_upper" not in df.columns or "bb_lower" not in df.columns:
+                bb_data = ta.bbands(df["close"], length=20)
+                if bb_data is not None and len(bb_data.columns) >= 3:
+                    df["bb_upper"] = bb_data.iloc[:, -1]
+                    df["bb_lower"] = bb_data.iloc[:, 0]
+                    df["bb_middle"] = bb_data.iloc[:, 1]
+                else:
+                    df["bb_middle"] = df["close"].rolling(20).mean()
+                    bb_std = df["close"].rolling(20).std()
+                    df["bb_upper"] = df["bb_middle"] + (bb_std * 2)
+                    df["bb_lower"] = df["bb_middle"] - (bb_std * 2)
 
-        df["bb_position"] = (df["close"] - df["bb_lower"]) / (
-            df["bb_upper"] - df["bb_lower"]
-        )
-
-        # 成交量比率
-        df["volume_sma"] = ta.sma(df["volume"], length=20)
-        df["volume_ratio"] = df["volume"] / df["volume_sma"]
-
-        # 價格動量
-        df["price_momentum_5"] = df["close"].pct_change(5)
-        df["price_momentum_10"] = df["close"].pct_change(10)
-
-        # 波動率
-        df["volatility_10"] = (
-            df["close"].rolling(10).std() / df["close"].rolling(10).mean()
-        )
-
-        # 成交量趨勢
-        df["volume_trend"] = (
-            df["volume"]
-            .rolling(10)
-            .apply(
-                lambda x: (np.polyfit(range(len(x)), x, 1)[0] if len(x) == 10 else 0)
+            df["bb_position"] = (df["close"] - df["bb_lower"]) / (
+                df["bb_upper"] - df["bb_lower"]
             )
-        )
+
+        # 成交量比率（如果不存在才計算）
+        if "volume_ratio" not in df.columns:
+            df["volume_sma"] = ta.sma(df["volume"], length=20)
+            df["volume_ratio"] = df["volume"] / df["volume_sma"]
+
+        # 價格動量（如果不存在才計算）
+        if "price_momentum_5" not in df.columns:
+            df["price_momentum_5"] = df["close"].pct_change(5)
+        if "price_momentum_10" not in df.columns:
+            df["price_momentum_10"] = df["close"].pct_change(10)
+
+        # 波動率（如果不存在才計算）
+        if "volatility_10" not in df.columns:
+            df["volatility_10"] = (
+                df["close"].rolling(10).std() / df["close"].rolling(10).mean()
+            )
+
+        # 成交量趨勢（如果不存在才計算）
+        if "volume_trend" not in df.columns:
+            df["volume_trend"] = (
+                df["volume"]
+                .rolling(10)
+                .apply(
+                    lambda x: (np.polyfit(range(len(x)), x, 1)[0] if len(x) == 10 else 0)
+                )
+            )
 
         return df
 

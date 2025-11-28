@@ -84,10 +84,16 @@ def run_detection(df, detection_methods):
 
     # Calculate all technical indicators once (includes ATR)
     df = calculate_technical_indicators(df)
+    
+    # Calculate cumulative metrics and second derivatives (for methods that need them)
+    # 這樣所有檢測器都可以使用預先計算好的指標
+    from utils.indicators import analyze_cumulative_metrics
+    df_with_metrics = analyze_cumulative_metrics(df, window_size=16)
 
     for method in detection_methods:
         # Get boolean array from vectorized detection
-        signal_mask = method.detect(df)
+        # 傳入包含累計指標的完整數據
+        signal_mask = method.detect(df_with_metrics)
         signal_indices = np.where(signal_mask)[0]
 
         results[method.name] = {
@@ -130,7 +136,7 @@ def create_visualization(df, detection_results, output_file=None):
                     signal_times, signal_prices,
                     color=method.get_color(),
                     marker=method.get_marker(),
-                    s=100, label=f"{method_name} ({len(signals)})",
+                    s=10, label=f"{method_name} ({len(signals)})",
                     alpha=0.8, zorder=5,
                 )
         
@@ -171,7 +177,7 @@ def create_visualization(df, detection_results, output_file=None):
                     signal_times, signal_prices,
                     color=method.get_color(),
                     marker=method.get_marker(),
-                    s=50, label=f"{method_name} ({len(signals)})",
+                    s=10, label=f"{method_name} ({len(signals)})",
                     alpha=0.8, zorder=5,
                 )
         
@@ -209,7 +215,7 @@ def create_visualization(df, detection_results, output_file=None):
                         signal_times, signal_prices,
                         color=method.get_color(),
                         marker=method.get_marker(),
-                        s=100, label=f"{method_name} ({len(recent_signals)})",
+                        s=10, label=f"{method_name} ({len(recent_signals)})",
                         alpha=0.8, zorder=5,
                     )
         
@@ -247,7 +253,7 @@ def create_visualization(df, detection_results, output_file=None):
                         signal_times, signal_prices,
                         color=method.get_color(),
                         marker=method.get_marker(),
-                        s=150, label=f"{method_name} ({len(recent_signals)})",
+                        s=10, label=f"{method_name} ({len(recent_signals)})",
                         alpha=0.8, zorder=5,
                     )
                     
@@ -394,7 +400,7 @@ def run_visualization(start_date_str, end_date_str, methods=None, output_file=No
     for method_name, result in detection_results.items():
         print(f"{method_name}: {result['count']} signals")
 
-    # Create visualization
+    # Create visualization (使用原始 df，因為只需要價格數據)
     create_visualization(df, detection_results, output_file)
     print(f"\n✅ Chart saved to {output_file}")
 

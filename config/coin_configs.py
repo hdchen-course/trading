@@ -36,14 +36,15 @@ from strategies import (
 def create_coin_configs() -> list:
     """創建各幣種的策略配置"""
 
-    # BTC - 基於180天回測結果優化 - Top 10 策略（平均勝率49.86%）
+    # BTC - 基於180天回測結果優化 - Top 10 策略（平均勝率49.87%）
+    # 新評分系統：勝率70% + 每次交易平均報酬30%
     btc_strategies = [
-        # 🥇 Top 2 超級策略 - 合計73.44%權重
-        MLReversalStrategy(
+        # 🥇 超高勝率策略 - 合計37.63%權重
+        ReversalStrategy(
             StrategyConfig(
-                name="ML Reversal A/V Turn",
+                name="Reversal A/V Turn",
                 params={},
-                weight=0.4538,  # 44.52% 勝率, 1734.30% 報酬 - 最高報酬！
+                weight=0.2012,  # 100.00% 勝率, 41.70% 報酬, 平均3.47%/交易 - 完美勝率！
             )
         ),
         TripleConfirmationStrategy(
@@ -54,11 +55,50 @@ def create_coin_configs() -> list:
                     "window_size": 16,
                     "signal_type": "both"
                 },
-                weight=0.2806,  # 85.71% 勝率, 985.21% 報酬 - 最高勝率！
+                weight=0.1751,  # 85.71% 勝率, 985.21% 報酬, 平均6.12%/交易 - 最高質量！
             )
         ),
         
-        # 🥈 高表現策略
+        # 🥈 高表現策略 - 合計26.27%權重
+        MacdVolumeStrategy(
+            StrategyConfig(
+                name="MACD Volume Detection",
+                params={},
+                weight=0.0924,  # 46.43% 勝率, 12.42% 報酬, 平均0.44%/交易
+            )
+        ),
+        MLReversalStrategy(
+            StrategyConfig(
+                name="ML Reversal A/V Turn",
+                params={},
+                weight=0.0906,  # 44.66% 勝率, 1754.14% 報酬, 平均2.46%/交易
+            )
+        ),
+        MacdReversalStrategy(
+            StrategyConfig(
+                name="MACD Reversal Detection",
+                params={},
+                weight=0.0797,  # 40.00% 勝率, 23.07% 報酬, 平均0.51%/交易
+            )
+        ),
+        LSTMStrategy(
+            StrategyConfig(
+                name="LSTM Detection",
+                params={},
+                weight=0.0762,  # 38.36% 勝率, 26.04% 報酬, 平均0.18%/交易
+            )
+        ),
+        CrashPredictionStrategy(
+            StrategyConfig(
+                name="8H Crash Prediction",
+                params={
+                    "crash_threshold": 0.75,
+                },
+                weight=0.0736,  # 37.09% 勝率, 31.91% 報酬, 平均0.12%/交易
+            )
+        ),
+        
+        # 🥉 穩定策略 - 合計36.10%權重
         StochRSIStrategy(
             StrategyConfig(
                 name="Stochastic RSI",
@@ -70,25 +110,16 @@ def create_coin_configs() -> list:
                     "oversold": 5,
                     "overbought": 95,
                 },
-                weight=0.0562,  # 37.18% 勝率, 167.37% 報酬
-            )
-        ),
-        ReversalStrategy(
-            StrategyConfig(
-                name="Reversal A/V Turn",
-                params={},
-                weight=0.0483,  # 100.00% 勝率, 41.70% 報酬 - 完美勝率！
+                weight=0.0733,  # 36.94% 勝率, 156.83% 報酬, 平均0.16%/交易
             )
         ),
         ATRStrategy(
             StrategyConfig(
                 name="ATR Breakout",
                 params={"atr_period": 14, "multiplier": 2.0},
-                weight=0.0472,  # 34.99% 勝率, 134.73% 報酬
+                weight=0.0695,  # 34.99% 勝率, 134.73% 報酬, 平均0.19%/交易
             )
         ),
-        
-        # 🥉 穩定策略
         TrendMLStrategy(
             StrategyConfig(
                 name="Trend ML",
@@ -97,50 +128,9 @@ def create_coin_configs() -> list:
                     "ema_slow": 50,
                     "model_threshold": 0.7,
                 },
-                weight=0.0291,  # 34.34% 勝率, 64.10% 報酬
+                weight=0.0684,  # 34.48% 勝率, 67.43% 報酬, 平均0.05%/交易
             )
         ),
-        CrashPredictionStrategy(
-            StrategyConfig(
-                name="8H Crash Prediction",
-                params={
-                    "crash_threshold": 0.75,
-                },
-                weight=0.0221,  # 37.09% 勝率, 31.91% 報酬
-            )
-        ),
-        LSTMStrategy(
-            StrategyConfig(
-                name="LSTM Detection",
-                params={},
-                weight=0.0211,  # 38.36% 勝率, 26.04% 報酬
-            )
-        ),
-        MacdReversalStrategy(
-            StrategyConfig(
-                name="MACD Reversal Detection",
-                params={},
-                weight=0.0209,  # 40.00% 勝率, 23.07% 報酬
-            )
-        ),
-        MacdVolumeStrategy(
-            StrategyConfig(
-                name="MACD Volume Detection",
-                params={},
-                weight=0.0207,  # 46.43% 勝率, 12.42% 報酬
-            )
-        ),
-        
-        # ❌ 以下策略已移除（勝率<35%或報酬<100%）
-        # TrendPredictionStrategy - 32.46% 勝率, 170.39% 報酬
-        # SeparateTrendStrategy - 31.81% 勝率, 131.78% 報酬
-        # MACDVolumeStrategy - 30.14% 勝率, 61.87% 報酬
-        # MACDStrategy - 30.33% 勝率, 33.60% 報酬
-        # BTCMACDBuyStrategy - 30.00% 勝率, -2.31% 報酬
-        # SARStrategy - 29.04% 勝率, -15.82% 報酬
-        # BollingerStrategy - 31.39% 勝率, 15.34% 報酬
-        # BollingerExtremeStrategy - 31.39% 勝率, 15.34% 報酬
-        # VolumeStrategy - 0.00% 勝率, -0.63% 報酬
     ]
 
     # ETH - 偏向趨勢跟隨策略

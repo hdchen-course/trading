@@ -51,7 +51,8 @@ class TripleConfirmationReversalDetector(DetectionMethod):
         檢測反轉點（符合 DetectionMethod 接口）- 向量化優化版本
         
         Args:
-            df: 包含 OHLCV 數據的 DataFrame（已經包含技術指標）
+            df: 包含 OHLCV 數據和累計指標的 DataFrame
+                必須包含: price_2nd, vol_2nd, macd_2nd 等二階導數
             
         Returns:
             布爾數組，True 表示該點為反轉點
@@ -60,12 +61,17 @@ class TripleConfirmationReversalDetector(DetectionMethod):
         if n < self.window_size + self.distance:
             return np.zeros(n, dtype=bool)
         
-        # 計算技術指標（如果還沒有）
-        if 'macd' not in df.columns:
-            df = calculate_technical_indicators(df)
+        # 檢查必要的欄位是否存在
+        required_cols = ['price_2nd', 'vol_2nd', 'macd_2nd']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call analyze_cumulative_metrics() before detection."
+            )
         
-        # 使用 analyze_cumulative_metrics 計算二階導數
-        analysis_df = analyze_cumulative_metrics(df, self.window_size)
+        # 直接使用傳入的 df（已包含二階導數）
+        analysis_df = df
         
         # Stage 1: 找局部極值
         prices = df['close'].values
@@ -89,9 +95,8 @@ class TripleConfirmationReversalDetector(DetectionMethod):
             if extreme_idx < self.window_size - 1:
                 continue
             
-            # 映射到 analysis_df 的索引
-            # analysis_df[0] 對應 df[window_size - 1]
-            analysis_extreme_idx = extreme_idx - (self.window_size - 1)
+            # 現在 analysis_df 與 df 長度相同，直接使用索引
+            analysis_extreme_idx = extreme_idx
             
             # 檢查後續1-2個點
             for offset in [1, 2]:
@@ -101,7 +106,7 @@ class TripleConfirmationReversalDetector(DetectionMethod):
                 if current_idx >= n:
                     continue
                 
-                analysis_current_idx = current_idx - (self.window_size - 1)
+                analysis_current_idx = current_idx
                 
                 # 檢查 analysis 索引有效性
                 if analysis_current_idx >= len(analysis_df):

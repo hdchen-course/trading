@@ -144,7 +144,15 @@ class MacdReversalStrategy(BaseStrategy):
         super().__init__(config)
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
-        df = calculate_technical_indicators(df)
+        # 檢查必要的欄位是否存在
+        required_cols = ['macd_2nd', 'price_2nd', 'atr_2nd', 'price_atr_ratio_1h', 'price_change_pct']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call calculate_technical_indicators() and analyze_cumulative_metrics() before generating signals."
+            )
+        
         detector = MacdReversalDetection()
         signal_mask = detector.detect(df)
 
@@ -171,6 +179,8 @@ class MacdVolumeStrategy(BaseStrategy):
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         df = calculate_technical_indicators(df)
+        
+        # MacdVolumeDetection 不需要 analyze_cumulative_metrics
         detector = MacdVolumeDetection()
         signal_mask = detector.detect(df)
 

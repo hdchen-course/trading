@@ -21,8 +21,17 @@ class MacdReversalDetection(DetectionMethod):
         if n < window_size:
             return np.zeros(n, dtype=bool)
 
-        # 使用analyze_cumulative_metrics獲得一致的計算結果
-        analysis_df = analyze_cumulative_metrics(df, window_size)
+        # 檢查必要的欄位是否存在
+        required_cols = ['macd_2nd', 'price_2nd', 'atr_2nd', 'price_atr_ratio_1h', 'price_change_pct']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call analyze_cumulative_metrics() before detection."
+            )
+        
+        # 直接使用傳入的 df（已包含累計指標）
+        analysis_df = df
 
         # Round到小數點第二位
         macd_2nd_rounded = np.round(analysis_df["macd_2nd"], 2)
@@ -98,7 +107,17 @@ class BTCMACDBuyDetection(DetectionMethod):
         if n < window_size + 1:
             return np.zeros(n, dtype=bool)
 
-        analysis_df = analyze_cumulative_metrics(df, window_size)
+        # 檢查必要的欄位是否存在
+        required_cols = ['macd_2nd', 'ema_100', 'ema_50', 'close_price']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call analyze_cumulative_metrics() before detection."
+            )
+        
+        # 直接使用傳入的 df（已包含累計指標）
+        analysis_df = df
         signals = np.zeros(n, dtype=bool)
 
         # 向量化操作

@@ -23,7 +23,15 @@ class LSTMStrategy(BaseStrategy):
         super().__init__(config)
 
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
-        df = calculate_technical_indicators(df)
+        # 檢查必要的欄位是否存在
+        required_cols = ['avg_macd', 'avg_rsi', 'volatility', 'macd_2nd', 'price_2nd', 'vol_2nd', 'atr_2nd']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call calculate_technical_indicators() and analyze_cumulative_metrics() before generating signals."
+            )
+        
         detector = LSTMDetection()
         signal_mask = detector.detect(df)
 

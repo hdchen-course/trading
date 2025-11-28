@@ -78,10 +78,10 @@ class MLReversalDetector(DetectionMethod):
         與訓練時的特徵提取保持一致（Top 10 特徵）
         
         Args:
-            df: 原始數據 DataFrame
+            df: 包含所有指標的 DataFrame（已調用 analyze_cumulative_metrics）
             entry_idx: 入場點索引 [t+1] 或 [t+2]
             reversal_idx: 反轉點索引 [t]
-            analysis_df: 包含二階導數的分析 DataFrame
+            analysis_df: 與 df 相同（為了向後兼容保留參數）
             
         Returns:
             特徵字典（Top 10 特徵）
@@ -89,15 +89,13 @@ class MLReversalDetector(DetectionMethod):
         if entry_idx < 10 or reversal_idx < 10:
             return None
         
-        # 映射到 analysis_df 的索引
-        analysis_reversal_idx = reversal_idx - (self.window_size - 1)
-        analysis_entry_idx = entry_idx - (self.window_size - 1)
-        
-        if analysis_reversal_idx < 0 or analysis_entry_idx >= len(analysis_df):
-            return None
-        
+        # 現在 df 已經包含所有指標，直接使用索引
         reversal_data = df.iloc[reversal_idx]
         entry_data = df.iloc[entry_idx]
+        
+        # 檢查是否有 NaN（前面的數據可能無法計算）
+        if pd.isna(reversal_data['price_2nd']) or pd.isna(entry_data['price_2nd']):
+            return None
         
         # Top 10 特徵（與訓練時完全一致）
         features = {
@@ -123,7 +121,7 @@ class MLReversalDetector(DetectionMethod):
             'macd_at_entry': entry_data['macd'],
             
             # 8. price_2nd_at_entry (6.9%)
-            'price_2nd_at_entry': analysis_df.iloc[analysis_entry_idx]['price_2nd'] if analysis_entry_idx < len(analysis_df) else 0,
+            'price_2nd_at_entry': entry_data['price_2nd'],
             
             # 9. macd_at_t (5.7%)
             'macd_at_t': reversal_data['macd'],
@@ -143,7 +141,8 @@ class MLReversalDetector(DetectionMethod):
         Stage 2: ML 模型檢查極值點後 1-2 根K線是否符合入場條件
         
         Args:
-            df: 包含 OHLCV 數據的 DataFrame
+            df: 包含 OHLCV 數據和累計指標的 DataFrame
+                必須包含: rsi, macd, bb_position, price_2nd 等指標
             
         Returns:
             布爾數組，True 表示該點為入場點
@@ -152,12 +151,17 @@ class MLReversalDetector(DetectionMethod):
         if n < self.window_size + self.distance:
             return np.zeros(n, dtype=bool)
         
-        # 計算技術指標（如果還沒有）
-        if 'macd' not in df.columns:
-            df = calculate_technical_indicators(df)
+        # 檢查必要的欄位是否存在
+        required_cols = ['rsi', 'macd', 'macd_histogram', 'bb_position', 'price_2nd']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call calculate_technical_indicators() and analyze_cumulative_metrics() before detection."
+            )
         
-        # 計算二階導數
-        analysis_df = analyze_cumulative_metrics(df, self.window_size)
+        # 直接使用傳入的 df（已包含所有指標）
+        analysis_df = df
         
         # Stage 1: 找局部極值
         prices = df['close'].values
@@ -195,8 +199,9 @@ class MLReversalDetector(DetectionMethod):
                     continue
                 
                 # 提取該點的特徵（包含反轉點上下文）
+                # 現在 analysis_df 就是 df，不需要索引映射
                 features = self._extract_features_with_context(
-                    df, check_idx, extreme_idx, analysis_df
+                    df, check_idx, extreme_idx, df
                 )
                 
                 if features is None:

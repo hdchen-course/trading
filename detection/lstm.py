@@ -27,8 +27,18 @@ class LSTMDetection(DetectionMethod):
         if n < timesteps:
             return np.zeros(n, dtype=bool)
 
-        # 使用與訓練時相同的特徵處理
-        analysis_df = analyze_cumulative_metrics(df, window_size=96)
+        # 檢查必要的欄位是否存在
+        required_cols = ['avg_macd', 'avg_rsi', 'volatility', 'price_change_pct', 
+                        'macd_2nd', 'price_2nd', 'vol_2nd', 'atr_2nd']
+        missing_cols = [col for col in required_cols if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"Missing required columns: {missing_cols}. "
+                f"Please call analyze_cumulative_metrics() before detection."
+            )
+        
+        # 直接使用傳入的 df（已包含累計指標）
+        analysis_df = df
 
         feature_columns = [
             "close_price",
