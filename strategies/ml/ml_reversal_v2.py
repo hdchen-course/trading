@@ -42,7 +42,7 @@ class MLReversalV2Strategy(BaseStrategy):
             config = StrategyConfig(
                 name="ML Reversal V2",
                 params={
-                    "distance": 20,
+                    "distance": 10,
                     "window_size": 16,
                     "signal_type": "both"  # 'buy', 'sell', 或 'both'
                 }
@@ -51,7 +51,7 @@ class MLReversalV2Strategy(BaseStrategy):
         
         # 創建檢測器
         self.detector = MLReversalDetector(
-            distance=self.params.get("distance", 20),
+            extreme_window=self.params.get("distance", 10),
             window_size=self.params.get("window_size", 16)
         )
     

@@ -32,16 +32,16 @@ class TripleConfirmationReversalDetector(DetectionMethod):
     來確認反轉點，達到 81.2% 的精確度
     """
     
-    def __init__(self, distance: int = 20, window_size: int = 16):
+    def __init__(self, extreme_window: int = 5, window_size: int = 16):
         """
         初始化檢測器
         
         Args:
-            distance: 局部極值的最小距離
+            extreme_window: 局部極值回看窗口（默認 5，即 1.25 小時）
             window_size: 滾動窗口大小（用於計算指標）
         """
         super().__init__("Triple Confirmation Reversal")
-        self.distance = distance
+        self.extreme_window = extreme_window
         self.window_size = window_size
     
 
@@ -58,7 +58,7 @@ class TripleConfirmationReversalDetector(DetectionMethod):
             布爾數組，True 表示該點為反轉點
         """
         n = len(df)
-        if n < self.window_size + self.distance:
+        if n < self.window_size + self.extreme_window:
             return np.zeros(n, dtype=bool)
         
         # 檢查必要的欄位是否存在
@@ -73,9 +73,9 @@ class TripleConfirmationReversalDetector(DetectionMethod):
         # 直接使用傳入的 df（已包含二階導數）
         analysis_df = df
         
-        # Stage 1: 找局部極值
+        # Stage 1: 找局部極值（只看過去數據）
         prices = df['close'].values
-        extremes, peaks, valleys = find_local_extremes(prices, distance=self.distance)
+        extremes, peaks, valleys = find_local_extremes(prices, window=self.extreme_window)
         
         # 創建極值標記數組（用於快速查找）
         is_extreme = np.zeros(n, dtype=bool)

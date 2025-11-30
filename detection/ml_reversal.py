@@ -33,7 +33,7 @@ class MLReversalDetector(DetectionMethod):
     
     def __init__(
         self, 
-        distance: int = 20, 
+        extreme_window: int = 10, 
         window_size: int = 16,
         model_path: str = "models/reversal/reversal_model_v2.pkl"
     ):
@@ -41,12 +41,12 @@ class MLReversalDetector(DetectionMethod):
         初始化檢測器
         
         Args:
-            distance: 局部極值的最小距離
+            extreme_window: 局部極值回看窗口（默認 5，即 1.25 小時）
             window_size: 滾動窗口大小（用於計算指標）
             model_path: 模型檔案路徑
         """
         super().__init__("ML Reversal Detection")
-        self.distance = distance
+        self.extreme_window = extreme_window
         self.window_size = window_size
         self.model_path = model_path
         self.model = None
@@ -75,7 +75,7 @@ class MLReversalDetector(DetectionMethod):
         """
         提取入場點的特徵，包含反轉點的上下文信息
         
-        與訓練時的特徵提取保持一致（Top 10 特徵）
+        與訓練時的特徵提取保持一致（Top 20 特徵）
         
         Args:
             df: 包含所有指標的 DataFrame（已調用 analyze_cumulative_metrics）
@@ -84,50 +84,48 @@ class MLReversalDetector(DetectionMethod):
             analysis_df: 與 df 相同（為了向後兼容保留參數）
             
         Returns:
-            特徵字典（Top 10 特徵）
+            特徵字典（Top 20 特徵）
         """
         if entry_idx < 10 or reversal_idx < 10:
             return None
         
         # 現在 df 已經包含所有指標，直接使用索引
-        reversal_data = df.iloc[reversal_idx]
-        entry_data = df.iloc[entry_idx]
+        data_t = df.iloc[reversal_idx]
+        data_entry = df.iloc[entry_idx]
         
         # 檢查是否有 NaN（前面的數據可能無法計算）
-        if pd.isna(reversal_data['price_2nd']) or pd.isna(entry_data['price_2nd']):
+        if pd.isna(data_t['price_2nd']) or pd.isna(data_entry['price_2nd']):
             return None
         
-        # Top 10 特徵（與訓練時完全一致）
+        # Top 20 特徵（與訓練時完全一致）
         features = {
-            # 1. price_change (18.1%)
-            'price_change': (entry_data['close'] - reversal_data['close']) / reversal_data['close'],
+            # [t] 反轉點的特徵
+            'bb_position_t': data_t['bb_position'],
+            'rsi_t': data_t['rsi'],
+            'macd_histogram_t': data_t['macd_histogram'],
+            'macd_t': data_t['macd'],
+            'volume_t': data_t['volume'],
+            'macd_2nd_t': data_t['macd_2nd'],
             
-            # 2. bb_position_at_t (13.8%)
-            'bb_position_at_t': reversal_data['bb_position'],
+            # [t+1/t+2] 入場點的特徵
+            'bb_position_entry': data_entry['bb_position'],
+            'rsi_entry': data_entry['rsi'],
+            'macd_histogram_entry': data_entry['macd_histogram'],
+            'macd_entry': data_entry['macd'],
+            'price_2nd_entry': data_entry['price_2nd'],
+            'macd_2nd_entry': data_entry['macd_2nd'],
             
-            # 3. rsi_change (11.2%)
-            'rsi_change': entry_data['rsi'] - reversal_data['rsi'],
+            # 變化特徵
+            'bb_position_change': data_entry['bb_position'] - data_t['bb_position'],
+            'price_change': (data_entry['close'] - data_t['close']) / data_t['close'],
+            'rsi_change': data_entry['rsi'] - data_t['rsi'],
+            'macd_change': data_entry['macd'] - data_t['macd'],
+            'volume_change': data_entry['volume'] / data_t['volume'] if data_t['volume'] > 0 else 1.0,
             
-            # 4. macd_histogram_at_t (12.8%)
-            'macd_histogram_at_t': reversal_data['macd_histogram'],
-            
-            # 5. macd_histogram_at_entry (9.8%)
-            'macd_histogram_at_entry': entry_data['macd_histogram'],
-            
-            # 6. rsi_at_t (9.9%)
-            'rsi_at_t': reversal_data['rsi'],
-            
-            # 7. macd_at_entry (6.4%)
-            'macd_at_entry': entry_data['macd'],
-            
-            # 8. price_2nd_at_entry (6.9%)
-            'price_2nd_at_entry': entry_data['price_2nd'],
-            
-            # 9. macd_at_t (5.7%)
-            'macd_at_t': reversal_data['macd'],
-            
-            # 10. volatility_10 (5.5%)
+            # 動量和波動率特徵
             'volatility_10': df.iloc[entry_idx - 10:entry_idx]['close'].std() / df.iloc[entry_idx - 10:entry_idx]['close'].mean(),
+            'price_momentum_10': (df.iloc[entry_idx]['close'] - df.iloc[entry_idx - 10]['close']) / df.iloc[entry_idx - 10]['close'],
+            'price_momentum_5': (df.iloc[entry_idx]['close'] - df.iloc[entry_idx - 5]['close']) / df.iloc[entry_idx - 5]['close'],
         }
         
         return features
@@ -148,7 +146,7 @@ class MLReversalDetector(DetectionMethod):
             布爾數組，True 表示該點為入場點
         """
         n = len(df)
-        if n < self.window_size + self.distance:
+        if n < self.window_size + self.extreme_window:
             return np.zeros(n, dtype=bool)
         
         # 檢查必要的欄位是否存在
@@ -163,25 +161,35 @@ class MLReversalDetector(DetectionMethod):
         # 直接使用傳入的 df（已包含所有指標）
         analysis_df = df
         
-        # Stage 1: 找局部極值
+        # Stage 1: 找局部極值（只看過去數據）
         prices = df['close'].values
-        extremes, peaks, valleys = find_local_extremes(prices, distance=self.distance)
+        extremes, peaks, valleys = find_local_extremes(prices, window=self.extreme_window)
         
         # Stage 2: ML 模型預測 - 檢查極值點後 1-2 根K線
         signals = np.zeros(n, dtype=bool)
         
-        # Top 10 特徵順序（必須與訓練時一致）
+        # Top 20 特徵順序（必須與訓練時一致）
         feature_columns = [
-            "price_change",
-            "bb_position_at_t",
-            "rsi_change",
-            "macd_histogram_at_t",
-            "macd_histogram_at_entry",
-            "rsi_at_t",
-            "macd_at_entry",
-            "price_2nd_at_entry",
-            "macd_at_t",
-            "volatility_10",
+            'bb_position_change',
+            'price_change',
+            'rsi_change',
+            'bb_position_t',
+            'macd_histogram_t',
+            'rsi_t',
+            'bb_position_entry',
+            'macd_histogram_entry',
+            'volatility_10',
+            'rsi_entry',
+            'macd_t',
+            'volume_t',
+            'macd_entry',
+            'macd_2nd_t',
+            'price_2nd_entry',
+            'price_momentum_10',
+            'macd_change',
+            'price_momentum_5',
+            'volume_change',
+            'macd_2nd_entry',
         ]
         
         # 為每個極值點檢查後續 1-2 根K線

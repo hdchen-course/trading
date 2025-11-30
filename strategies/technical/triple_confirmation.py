@@ -53,7 +53,7 @@ class TripleConfirmationStrategy(BaseStrategy):
         
         # 創建檢測器
         self.detector = TripleConfirmationReversalDetector(
-            distance=self.params.get("distance", 20),
+            extreme_window=self.params.get("distance", 20),
             window_size=self.params.get("window_size", 16)
         )
     
