@@ -4,35 +4,33 @@
 """
 
 from .macd import (
-    MACDStrategy,
-    MACDVolumeStrategy,
-    MacdReversalStrategy,
-    MacdVolumeStrategy,
-    BTCMACDBuyStrategy,
-)
+        MACDStrategy,
+        MACDVolumeStrategy,
+        MacdReversalStrategy,
+        MacdVolumeStrategy,
+        BTCMACDBuyStrategy,
+        )
 from .bollinger import (
-    BollingerStrategy,
-    BollingerExtremeStrategy,
-    EnhancedBollingerStrategy,
-)
+        BollingerStrategy,
+        BollingerExtremeStrategy,
+        )
 from .momentum import StochRSIStrategy, ATRStrategy, SARStrategy
 from .volume import VolumeStrategy
 from .candlestick import CandlestickStrategy
 from .trend_confirmation import TrendConfirmationStrategy
 
 __all__ = [
-    "MACDStrategy",
-    "MACDVolumeStrategy",
-    "MacdReversalStrategy",
-    "MacdVolumeStrategy",
-    "BTCMACDBuyStrategy",
-    "BollingerStrategy",
-    "BollingerExtremeStrategy",
-    "EnhancedBollingerStrategy",
-    "StochRSIStrategy",
-    "ATRStrategy",
-    "SARStrategy",
-    "VolumeStrategy",
-    "CandlestickStrategy",
-    "TrendConfirmationStrategy",
-]
+        "MACDStrategy",
+        "MACDVolumeStrategy",
+        "MacdReversalStrategy",
+        "MacdVolumeStrategy",
+        "BTCMACDBuyStrategy",
+        "BollingerStrategy",
+        "BollingerExtremeStrategy",
+        "StochRSIStrategy",
+        "ATRStrategy",
+        "SARStrategy",
+        "VolumeStrategy",
+        "CandlestickStrategy",
+        "TrendConfirmationStrategy",
+        ]

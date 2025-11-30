@@ -6,7 +6,7 @@ VENV_DIR="venv"
 # 檢查 venv 是否存在
 if [ ! -d "$VENV_DIR" ]; then
     echo "🔧 虛擬環境不存在，正在建立..."
-    python3.12 -m venv "$VENV_DIR"
+    /usr/local/bin/python3.12 -m venv "$VENV_DIR"
 fi
 
 # 啟動 venv
@@ -22,7 +22,8 @@ fi
 
 # 升級 pip 和安裝基本工具
 echo "🔧 升級 pip 和安裝基本工具..."
-pip install --upgrade pip setuptools wheel
+pip install --upgrade pip
+pip install --upgrade setuptools wheel
 
 # 檢查 requirements.txt 是否存在
 if [ -f "requirements.txt" ]; then
