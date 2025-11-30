@@ -31,7 +31,7 @@ from strategies import (
     TripleConfirmationBuyStrategy,
     TripleConfirmationSellStrategy,
 )
-from strategies.ml import MLReversalV2Strategy
+from strategies.ml import MLReversalV2Strategy, MLReversalV3Strategy
 
 
 def create_coin_configs() -> list:
@@ -68,6 +68,16 @@ def create_coin_configs() -> list:
                     "signal_type": "both"
                 },
                 weight=0.6213 / 2.2551,  # 62.13% 勝率 → 27.55% 權重 (441次交易, 報酬2497.19%)
+            )
+        ),
+        MLReversalV3Strategy(
+            StrategyConfig(
+                name="ML Reversal V3",
+                params={
+                    "prob_threshold": 0.5,
+                    "signal_type": "both"
+                },
+                weight=0.0,  # 測試階段，不參與權重計算
             )
         ),
     ]

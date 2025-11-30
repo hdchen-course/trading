@@ -125,7 +125,7 @@ def calculate_z_score(series, window=200):
 def analyze_cumulative_metrics(df, window_size=16):
     """
     分析累計技術指標
-    
+
     改進版：保留所有數據，前面無法計算的部分填 NaN
     這樣可以保持與原始 df 相同的長度和索引對齊
     """
@@ -148,14 +148,8 @@ def analyze_cumulative_metrics(df, window_size=16):
         .rolling(window=window_size, min_periods=1)
         .mean()
         .values,
-        "avg_macd": df["macd"]
-        .rolling(window=window_size, min_periods=1)
-        .mean()
-        .values,
-        "avg_rsi": df["rsi"]
-        .rolling(window=window_size, min_periods=1)
-        .mean()
-        .values,
+        "avg_macd": df["macd"].rolling(window=window_size, min_periods=1).mean().values,
+        "avg_rsi": df["rsi"].rolling(window=window_size, min_periods=1).mean().values,
         "price_above_sar_ratio": df["price_above_sar"]
         .rolling(window=window_size, min_periods=1)
         .mean()
@@ -182,6 +176,25 @@ def analyze_cumulative_metrics(df, window_size=16):
     volume_trend = calculate_volume_trend(df, window_size)
     results["volume_trend"] = volume_trend
 
+    # 計算 LIS/LDS（使用相同的 window_size）
+    lis_values = [np.nan] * window_size
+    lds_values = [np.nan] * window_size
+
+    for idx in range(window_size, n):
+        start_idx = idx - window_size
+        end_idx = idx
+        lis_length = calculate_longest_increasing_subsequence(
+            df, "close", start_idx, end_idx
+        )
+        lds_length = calculate_longest_decreasing_subsequence(
+            df, "close", start_idx, end_idx
+        )
+        lis_values.append(lis_length)
+        lds_values.append(lds_length)
+
+    lis_series = pd.Series(lis_values)
+    lds_series = pd.Series(lds_values)
+
     # 計算二階導數 (加速度) 並標準化為z-score
     macd_series = pd.Series(results["avg_macd"])
     price_series = pd.Series(results["close_price"])
@@ -195,67 +208,72 @@ def analyze_cumulative_metrics(df, window_size=16):
     price_2nd_raw = calculate_second_derivative(price_series)
     vol_2nd_raw = calculate_second_derivative(volume_trend_series)
     atr_2nd_raw = calculate_second_derivative(atr_series)
+    lis_2nd_raw = calculate_second_derivative(lis_series)
+    lds_2nd_raw = calculate_second_derivative(lds_series)
+
+    # 儲存原始 LIS/LDS 值
+    results["lis"] = lis_series.values
+    results["lds"] = lds_series.values
 
     # 標準化為z-score (200期滾動)
     results["macd_2nd"] = calculate_z_score(macd_2nd_raw, window=200).values
     results["price_2nd"] = calculate_z_score(price_2nd_raw, window=200).values
     results["vol_2nd"] = calculate_z_score(vol_2nd_raw, window=200).values
     results["atr_2nd"] = calculate_z_score(atr_2nd_raw, window=200).values
+    results["lis_2nd"] = calculate_z_score(lis_2nd_raw, window=200).values
+    results["lds_2nd"] = calculate_z_score(lds_2nd_raw, window=200).values
 
     # 把原始df中所有欄位複製到results中（除了timestamp和已存在的欄位）
     # 改進：不再 slice，保持完整長度
     for col in df.columns:
-        if col != 'timestamp' and col not in results:
+        if col != "timestamp" and col not in results:
             results[col] = df[col].values
 
     return pd.DataFrame(results)
 
 
 def calculate_longest_increasing_subsequence(
-    df: pd.DataFrame, 
-    price_col: str = 'close',
-    start_idx: int = 0,
-    end_idx: int = None
+    df: pd.DataFrame, price_col: str = "close", start_idx: int = 0, end_idx: int = None
 ) -> int:
     """
     計算指定區間內的最長遞增子序列長度（使用動態規劃 + 二分搜索，O(n log n)）
-    
+
     LIS 是指可以跳過元素的最長遞增子序列，不需要連續。
-    
+
     算法：
     - 使用 tails 數組維護不同長度的 LIS 的最小尾部值
     - 使用二分搜索找到當前元素應該放置的位置
     - 時間複雜度：O(n log n)
-    
+
     Args:
         df: 包含價格數據的 DataFrame
         price_col: 價格列名，默認為 'close'
         start_idx: 起始索引（包含），默認為 0
         end_idx: 結束索引（不包含），默認為 None（表示到末尾）
-        
+
     Returns:
         int: 該區間內的最長遞增子序列長度
-        
+
     Example:
         價格序列: [10, 9, 2, 5, 3, 7, 101, 18]
         LIS 長度: 4
         LIS 序列: [2, 5, 7, 101] 或 [2, 3, 7, 101]
     """
     prices = df[price_col].values
-    
+
     if end_idx is None:
         end_idx = len(prices)
-    
+
     # 只處理指定範圍
     prices_range = prices[start_idx:end_idx]
     n = len(prices_range)
-    
+
     if n == 0:
         return 0
-    
+
     # tails[i] 表示長度為 i+1 的 LIS 的最小尾部值
     tails = []
-    
+
     for price in prices_range:
         # 二分搜索找到 price 應該放置的位置
         left, right = 0, len(tails)
@@ -265,65 +283,62 @@ def calculate_longest_increasing_subsequence(
                 left = mid + 1
             else:
                 right = mid
-        
+
         # 更新 tails
         if left == len(tails):
             tails.append(price)
         else:
             tails[left] = price
-    
+
     return len(tails)
 
 
 def calculate_longest_decreasing_subsequence(
-    df: pd.DataFrame, 
-    price_col: str = 'close',
-    start_idx: int = 0,
-    end_idx: int = None
+    df: pd.DataFrame, price_col: str = "close", start_idx: int = 0, end_idx: int = None
 ) -> int:
     """
     計算指定區間內的最長遞減子序列長度（使用動態規劃 + 二分搜索，O(n log n)）
-    
+
     LDS 是指可以跳過元素的最長遞減子序列，不需要連續。
-    
+
     算法：
     - 使用 tails 數組維護不同長度的 LDS 的最大尾部值
     - 使用二分搜索找到當前元素應該放置的位置
     - 時間複雜度：O(n log n)
-    
+
     Args:
         df: 包含價格數據的 DataFrame
         price_col: 價格列名，默認為 'close'
         start_idx: 起始索引（包含），默認為 0
         end_idx: 結束索引（不包含），默認為 None（表示到末尾）
-        
+
     Returns:
         int: 該區間內的最長遞減子序列長度
-        
+
     Example:
         價格序列: [10, 9, 2, 5, 3, 7, 101, 18]
         LDS 長度: 3
         LDS 序列: [10, 9, 2] 或 [10, 5, 3]
     """
     prices = df[price_col].values
-    
+
     if end_idx is None:
         end_idx = len(prices)
-    
+
     # 只處理指定範圍
     prices_range = prices[start_idx:end_idx]
     n = len(prices_range)
-    
+
     if n == 0:
         return 0
-    
+
     # 將 LDS 問題轉換為 LIS 問題：對所有價格取負數
     # 這樣遞減序列就變成了遞增序列
     neg_prices = [-p for p in prices_range]
-    
+
     # tails[i] 表示長度為 i+1 的 LIS 的最小尾部值（對負數）
     tails = []
-    
+
     for price in neg_prices:
         # 二分搜索找到 price 應該放置的位置
         left, right = 0, len(tails)
@@ -333,40 +348,38 @@ def calculate_longest_decreasing_subsequence(
                 left = mid + 1
             else:
                 right = mid
-        
+
         # 更新 tails
         if left == len(tails):
             tails.append(price)
         else:
             tails[left] = price
-    
+
     return len(tails)
 
 
 def add_subsequence_indicators(
-    df: pd.DataFrame, 
-    price_col: str = 'close',
-    window: int = 20
+    df: pd.DataFrame, price_col: str = "close", window: int = 20
 ) -> pd.DataFrame:
     """
     為 DataFrame 添加滾動窗口的最長遞增/遞減子序列指標
-    
+
     對每個位置，計算過去 window 個數據點的 LIS/LDS 長度。
-    
+
     這些指標可以用來：
     1. 識別趨勢強度：LIS/LDS 長度越大，趨勢越強
     2. 檢測趨勢轉折：LIS 從大變小可能是上漲趨勢結束
     3. 確認趨勢延續：持續的高 LIS/LDS 值表示趨勢穩定
     4. 比較相對強度：LIS > LDS 表示上漲趨勢主導
-    
+
     Args:
         df: 包含價格數據的 DataFrame
         price_col: 價格列名，默認為 'close'
         window: 滾動窗口大小，默認為 20
-        
+
     Returns:
         添加了 'lis_length'、'lds_length' 和 'trend_indicator' 列的 DataFrame
-        
+
     Example:
         對於窗口大小 = 5:
         價格: [10, 9, 2, 5, 3, 7, 101, 18]
@@ -375,22 +388,26 @@ def add_subsequence_indicators(
     """
     df = df.copy()
     n = len(df)
-    
+
     lis_lengths = np.zeros(n)
     lds_lengths = np.zeros(n)
-    
+
     for i in range(n):
         start = max(0, i - window + 1)
         end = i + 1
-        
-        lis_lengths[i] = calculate_longest_increasing_subsequence(df, price_col, start, end)
-        lds_lengths[i] = calculate_longest_decreasing_subsequence(df, price_col, start, end)
-    
-    df['lis_length'] = lis_lengths
-    df['lds_length'] = lds_lengths
-    
+
+        lis_lengths[i] = calculate_longest_increasing_subsequence(
+            df, price_col, start, end
+        )
+        lds_lengths[i] = calculate_longest_decreasing_subsequence(
+            df, price_col, start, end
+        )
+
+    df["lis_length"] = lis_lengths
+    df["lds_length"] = lds_lengths
+
     # 計算趨勢指標：LIS - LDS
     # 正值表示上漲趨勢主導，負值表示下跌趨勢主導
-    df['trend_indicator'] = df['lis_length'] - df['lds_length']
-    
+    df["trend_indicator"] = df["lis_length"] - df["lds_length"]
+
     return df
