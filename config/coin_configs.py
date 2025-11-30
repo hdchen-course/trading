@@ -9,7 +9,7 @@ from strategies import (
     CoinConfig,
     MACDStrategy,
     MacdReversalStrategy,
-    LSTMStrategy,
+    # LSTMStrategy,  # 已移除 TensorFlow 依賴
     MacdVolumeStrategy,
     MACDVolumeStrategy,
     BollingerStrategy,
