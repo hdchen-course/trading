@@ -137,6 +137,7 @@ def main():
         nargs="+",
         choices=[
             "macd",
+            "macdv1",
             "lstm",
             "volume",
             "btc",

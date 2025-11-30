@@ -19,6 +19,7 @@ from detection import (
 )
 from detection.ml_reversal_v3 import MLReversalV3Detector
 from detection.ml_reversal_v4 import MLReversalV4Detector
+from detection.macd_v1 import MACDV1Detector
 
 warnings.filterwarnings("ignore")
 
@@ -439,6 +440,7 @@ def run_visualization(start_date_str, end_date_str, methods=None, output_file=No
     # Initialize detection methods
     available_methods = {
         "macd": MacdReversalDetection(),
+        "macdv1": MACDV1Detector(),
         "volume": MacdVolumeDetection(),
         "btc": BTCMACDBuyDetection(),
         "peak": PeakValleyDetection(distance=20, height_threshold=0.001),

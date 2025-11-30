@@ -20,15 +20,14 @@ from strategies import (
 )
 from strategies.ml import (
     MLReversalV2Strategy,
-    MLReversalV3Strategy,
-    MLReversalV4Strategy,
+    MACDV1Strategy,
 )
 
 
 def create_coin_configs() -> list:
     """創建各幣種的策略配置"""
 
-    # BTC - 核心策略組合（3個精選策略）
+    # BTC - 核心策略組合（3個精選策略 + 1個測試策略）
     # 權重根據 180 天回測勝率調整 (2025-06-03 至 2025-11-29)
     # 總勝率: 1.00 + 0.6338 + 0.6213 = 2.2551
     btc_strategies = [
@@ -56,16 +55,9 @@ def create_coin_configs() -> list:
                 / 2.2551,  # 62.13% 勝率 → 27.55% 權重 (441次交易, 報酬2497.19%)
             )
         ),
-        MLReversalV3Strategy(
+        MACDV1Strategy(
             StrategyConfig(
-                name="ML Reversal V3",
-                params={"prob_threshold": 0.5, "signal_type": "both"},
-                weight=0.0,  # 測試階段，不參與權重計算
-            )
-        ),
-        MLReversalV4Strategy(
-            StrategyConfig(
-                name="ML Reversal V4",
+                name="MACD V1",
                 params={"prob_threshold": 0.5, "signal_type": "both"},
                 weight=0.0,  # 測試階段，不參與權重計算
             )
