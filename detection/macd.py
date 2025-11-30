@@ -62,17 +62,6 @@ class MacdReversalDetection(DetectionMethod):
 
         signals = condition1 & condition2 & condition3
 
-        # 輸出找到的信號點的完整信息
-        if signals.any():
-            signal_positions = signals[signals].index
-            print(f"Found {len(signal_positions)} signals:")
-            for pos in signal_positions:
-                row = analysis_df.iloc[pos]
-                print(f"Signal at {row['timestamp']}:")
-                for col in analysis_df.columns:
-                    print(f"  {col}: {row[col]}")
-                print()
-
         # 轉換回原始df的索引格式用於返回
         signal_indices = []
         if signals.any():

@@ -37,58 +37,37 @@ from strategies.ml import MLReversalV2Strategy
 def create_coin_configs() -> list:
     """創建各幣種的策略配置"""
 
-    # BTC - 核心策略組合（6個精選策略）
-    # 權重 = 勝率（歸一化）
-    # 總勝率: 1.00 + 0.858 + 0.669 + 0.544 + 0.50 + 0.357 = 3.928
+    # BTC - 核心策略組合（3個精選策略）
+    # 權重根據 180 天回測勝率調整 (2025-06-03 至 2025-11-29)
+    # 總勝率: 1.00 + 0.6338 + 0.6213 = 2.2551
     btc_strategies = [
         ReversalStrategy(
             StrategyConfig(
                 name="Reversal A/V Turn",
                 params={},
-                weight=1.00 / 3.928,  # 100.00% 勝率 → 25.46% 權重 (12次交易)
+                weight=1.00 / 2.2551,  # 100.00% 勝率 → 44.35% 權重 (12次交易, 報酬41.70%)
             )
         ),
         TripleConfirmationStrategy(
             StrategyConfig(
                 name="Triple Confirmation Reversal",
                 params={
-                    "distance": 20,
+                    "distance": 10,
                     "window_size": 16,
                     "signal_type": "both"
                 },
-                weight=0.858 / 3.928,  # 85.80% 勝率 → 21.84% 權重 (162次交易)
+                weight=0.6338 / 2.2551,  # 63.38% 勝率 → 28.11% 權重 (213次交易, 報酬439.76%)
             )
         ),
         MLReversalV2Strategy(
             StrategyConfig(
                 name="ML Reversal V2",
                 params={
-                    "distance": 20,
+                    "distance": 10,
                     "window_size": 16,
                     "signal_type": "both"
                 },
-                weight=0.669 / 3.928,  # 66.89% 勝率 → 17.03% 權重 (296次交易)
-            )
-        ),
-        MLReversalStrategy(
-            StrategyConfig(
-                name="ML Reversal A/V Turn",
-                params={},
-                weight=0.544 / 3.928,  # 54.40% 勝率 → 13.85% 權重 (1557次交易)
-            )
-        ),
-        MacdVolumeStrategy(
-            StrategyConfig(
-                name="MACD Volume Detection",
-                params={},
-                weight=0.50 / 3.928,  # 50.00% 勝率 → 12.73% 權重 (28次交易)
-            )
-        ),
-        MacdReversalStrategy(
-            StrategyConfig(
-                name="MACD Reversal Detection",
-                params={},
-                weight=0.357 / 3.928,  # 35.71% 勝率 → 9.09% 權重 (42次交易)
+                weight=0.6213 / 2.2551,  # 62.13% 勝率 → 27.55% 權重 (441次交易, 報酬2497.19%)
             )
         ),
     ]
