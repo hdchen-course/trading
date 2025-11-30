@@ -18,6 +18,7 @@ from detection import (
     MLReversalDetector,
 )
 from detection.ml_reversal_v3 import MLReversalV3Detector
+from detection.ml_reversal_v4 import MLReversalV4Detector
 
 warnings.filterwarnings("ignore")
 
@@ -444,6 +445,7 @@ def run_visualization(start_date_str, end_date_str, methods=None, output_file=No
         "triple": TripleConfirmationReversalDetector(extreme_window=5, window_size=16),
         "ml": MLReversalDetector(extreme_window=10, window_size=16),
         "mlv3": MLReversalV3Detector(prob_threshold=0.5),
+        "mlv4": MLReversalV4Detector(),
     }
 
     # 使用默認方法如果沒有指定 - 默認使用全部方法

@@ -8,30 +8,21 @@ from strategies import (
     StrategyConfig,
     CoinConfig,
     MACDStrategy,
-    MacdReversalStrategy,
-    # LSTMStrategy,  # 已移除 TensorFlow 依賴
-    MacdVolumeStrategy,
-    MACDVolumeStrategy,
-    BollingerStrategy,
-    BollingerExtremeStrategy,
     ATRStrategy,
     SARStrategy,
+    BollingerExtremeStrategy,
     StochRSIStrategy,
     VolumeStrategy,
     TrendConfirmationStrategy,
     CandlestickStrategy,
-    TrendMLStrategy,
     ReversalStrategy,
-    MLReversalStrategy,
-    TrendPredictionStrategy,
-    SeparateTrendStrategy,
-    CrashPredictionStrategy,
-    BTCMACDBuyStrategy,
     TripleConfirmationStrategy,
-    TripleConfirmationBuyStrategy,
-    TripleConfirmationSellStrategy,
 )
-from strategies.ml import MLReversalV2Strategy, MLReversalV3Strategy
+from strategies.ml import (
+    MLReversalV2Strategy,
+    MLReversalV3Strategy,
+    MLReversalV4Strategy,
+)
 
 
 def create_coin_configs() -> list:
@@ -45,38 +36,37 @@ def create_coin_configs() -> list:
             StrategyConfig(
                 name="Reversal A/V Turn",
                 params={},
-                weight=1.00 / 2.2551,  # 100.00% 勝率 → 44.35% 權重 (12次交易, 報酬41.70%)
+                weight=1.00
+                / 2.2551,  # 100.00% 勝率 → 44.35% 權重 (12次交易, 報酬41.70%)
             )
         ),
         TripleConfirmationStrategy(
             StrategyConfig(
                 name="Triple Confirmation Reversal",
-                params={
-                    "distance": 10,
-                    "window_size": 16,
-                    "signal_type": "both"
-                },
-                weight=0.6338 / 2.2551,  # 63.38% 勝率 → 28.11% 權重 (213次交易, 報酬439.76%)
+                params={"distance": 10, "window_size": 16, "signal_type": "both"},
+                weight=0.6338
+                / 2.2551,  # 63.38% 勝率 → 28.11% 權重 (213次交易, 報酬439.76%)
             )
         ),
         MLReversalV2Strategy(
             StrategyConfig(
                 name="ML Reversal V2",
-                params={
-                    "distance": 10,
-                    "window_size": 16,
-                    "signal_type": "both"
-                },
-                weight=0.6213 / 2.2551,  # 62.13% 勝率 → 27.55% 權重 (441次交易, 報酬2497.19%)
+                params={"distance": 10, "window_size": 16, "signal_type": "both"},
+                weight=0.6213
+                / 2.2551,  # 62.13% 勝率 → 27.55% 權重 (441次交易, 報酬2497.19%)
             )
         ),
         MLReversalV3Strategy(
             StrategyConfig(
                 name="ML Reversal V3",
-                params={
-                    "prob_threshold": 0.5,
-                    "signal_type": "both"
-                },
+                params={"prob_threshold": 0.5, "signal_type": "both"},
+                weight=0.0,  # 測試階段，不參與權重計算
+            )
+        ),
+        MLReversalV4Strategy(
+            StrategyConfig(
+                name="ML Reversal V4",
+                params={"prob_threshold": 0.5, "signal_type": "both"},
                 weight=0.0,  # 測試階段，不參與權重計算
             )
         ),
@@ -173,10 +163,18 @@ def create_coin_configs() -> list:
     ]
 
     return [
-        CoinConfig("Bitcoin", "BTCUSDT", btc_strategies, 10, enable_monitor=True),  # 10倍槓桿，啟用監控
-        CoinConfig("Ethereum", "ETHUSDT", eth_strategies, 8, enable_monitor=False),  # 8倍槓桿，暫不監控
-        CoinConfig("Solana", "SOLUSDT", sol_strategies, 6, enable_monitor=False),  # 6倍槓桿，暫不監控
-        CoinConfig("Sui", "SUIUSDT", sui_strategies, 5, enable_monitor=False),  # 5倍槓桿，暫不監控
+        CoinConfig(
+            "Bitcoin", "BTCUSDT", btc_strategies, 10, enable_monitor=True
+        ),  # 10倍槓桿，啟用監控
+        CoinConfig(
+            "Ethereum", "ETHUSDT", eth_strategies, 8, enable_monitor=False
+        ),  # 8倍槓桿，暫不監控
+        CoinConfig(
+            "Solana", "SOLUSDT", sol_strategies, 6, enable_monitor=False
+        ),  # 6倍槓桿，暫不監控
+        CoinConfig(
+            "Sui", "SUIUSDT", sui_strategies, 5, enable_monitor=False
+        ),  # 5倍槓桿，暫不監控
     ]
 
 

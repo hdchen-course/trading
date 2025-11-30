@@ -11,6 +11,7 @@ from .ml_reversal_v2 import (
     MLReversalV2SellStrategy,
 )
 from .ml_reversal_v3 import MLReversalV3Strategy
+from .ml_reversal_v4 import MLReversalV4Strategy
 from .crash import CrashPredictionStrategy
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "MLReversalV2BuyStrategy",
     "MLReversalV2SellStrategy",
     "MLReversalV3Strategy",
+    "MLReversalV4Strategy",
     "CrashPredictionStrategy",
 ]

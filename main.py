@@ -13,7 +13,6 @@
 import argparse
 import logging
 import os
-from dataclasses import dataclass
 
 import matplotlib
 from config.coin_configs import create_coin_configs
@@ -33,8 +32,6 @@ matplotlib.rcParams["font.sans-serif"] = [
     "sans-serif",  # 後備字體
 ]
 matplotlib.rcParams["axes.unicode_minus"] = False  # 解決負號顯示問題
-
-
 
 
 def setup_logging():
@@ -113,37 +110,75 @@ def main():
      python main.py --analyze-strength latest
      python main.py --analyze-strength output/trades_BTCUSDT_Combined_20251128_210145.csv
         """,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--debug", action="store_true", help="Debug 模式")
     parser.add_argument("--days", type=int, default=30, help="回測天數 (默認30天)")
-    parser.add_argument("--analyze", action="store_true", help="分析模式 - 分析指定日期的技術指標")
-    parser.add_argument("--visualize", action="store_true", help="視覺化模式 - 顯示檢測信號圖表")
-    parser.add_argument("--start", "--start-date", type=str, dest="start_date", help="開始日期 (YYYY-MM-DD)")
-    parser.add_argument("--end", "--end-date", type=str, dest="end_date", help="結束日期 (YYYY-MM-DD)")
+    parser.add_argument(
+        "--analyze", action="store_true", help="分析模式 - 分析指定日期的技術指標"
+    )
+    parser.add_argument(
+        "--visualize", action="store_true", help="視覺化模式 - 顯示檢測信號圖表"
+    )
+    parser.add_argument(
+        "--start",
+        "--start-date",
+        type=str,
+        dest="start_date",
+        help="開始日期 (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--end", "--end-date", type=str, dest="end_date", help="結束日期 (YYYY-MM-DD)"
+    )
     parser.add_argument("--output", type=str, help="輸出文件路徑 (CSV 或 PNG)")
-    parser.add_argument("--methods", type=str, nargs="+", 
-                       choices=["macd", "lstm", "volume", "btc", "peak", "triple", "ml", "mlv3"],
-                       help="檢測方法 (visualize 模式使用，默認全部)")
+    parser.add_argument(
+        "--methods",
+        type=str,
+        nargs="+",
+        choices=[
+            "macd",
+            "lstm",
+            "volume",
+            "btc",
+            "peak",
+            "triple",
+            "ml",
+            "mlv3",
+            "mlv4",
+        ],
+        help="檢測方法 (visualize 模式使用，默認全部)",
+    )
     parser.add_argument("--generate-data", action="store_true", help="生成訓練數據模式")
-    parser.add_argument("--interval", type=str, default="15m",
-                       choices=["15m", "1h", "4h", "1d"],
-                       help="K線間隔 (generate-data 模式使用，默認 15m)")
-    parser.add_argument("--window", type=int, default=16,
-                       help="窗口大小 (generate-data 模式使用，默認 16)")
-    parser.add_argument("--analyze-strength", type=str, metavar="CSV_FILE",
-                       help="分析交易記錄的信號強度 (指定 CSV 文件路徑，或使用 'latest' 自動選擇最新文件)")
+    parser.add_argument(
+        "--interval",
+        type=str,
+        default="15m",
+        choices=["15m", "1h", "4h", "1d"],
+        help="K線間隔 (generate-data 模式使用，默認 15m)",
+    )
+    parser.add_argument(
+        "--window",
+        type=int,
+        default=16,
+        help="窗口大小 (generate-data 模式使用，默認 16)",
+    )
+    parser.add_argument(
+        "--analyze-strength",
+        type=str,
+        metavar="CSV_FILE",
+        help="分析交易記錄的信號強度 (指定 CSV 文件路徑，或使用 'latest' 自動選擇最新文件)",
+    )
     args = parser.parse_args()
 
     if args.debug:
         debug_mode(args.days)
         return
-    
+
     if args.analyze_strength:
         from utils.signal_strength_analyzer import analyze_signal_strength
         import glob
-        
-        if args.analyze_strength.lower() == 'latest':
+
+        if args.analyze_strength.lower() == "latest":
             # 自動選擇最新的 Combined 文件
             files = glob.glob("output/trades_*_Combined_*.csv")
             if files:
@@ -154,37 +189,42 @@ def main():
                 return
         else:
             csv_file = args.analyze_strength
-        
+
         analyze_signal_strength(csv_file)
         return
-    
+
     if args.analyze:
         if not args.start_date or not args.end_date:
             print("❌ 錯誤: --analyze 模式需要 --start 和 --end 參數")
             print("範例: python main.py --analyze --start 2025-11-01 --end 2025-11-10")
             return
         from scripts.analyze import run_analysis
+
         run_analysis(args.start_date, args.end_date, args.output)
         return
-    
+
     if args.visualize:
         if not args.start_date or not args.end_date:
             print("❌ 錯誤: --visualize 模式需要 --start 和 --end 參數")
-            print("範例: python main.py --visualize --start 2025-11-01 --end 2025-11-10")
+            print(
+                "範例: python main.py --visualize --start 2025-11-01 --end 2025-11-10"
+            )
             return
         from scripts.visualize import run_visualization
+
         run_visualization(args.start_date, args.end_date, args.methods, args.output)
         return
-    
+
     if args.generate_data:
         from utils.generate_training_data import main as generate_data_main
+
         start_date = args.start_date or "2022-01-01"
         end_date = args.end_date or "2025-09-01"
         generate_data_main(
             start_date=start_date,
             end_date=end_date,
             interval=args.interval,
-            window_size=args.window
+            window_size=args.window,
         )
         return
 
@@ -230,19 +270,19 @@ def main():
 
             elif choice == "2":
                 print("\n👁️  開始監控...")
-                
+
                 # 過濾啟用監控的幣種
                 enabled_configs = [c for c in coin_configs if c.enable_monitor]
-                
+
                 if not enabled_configs:
                     print("❌ 沒有啟用監控的幣種")
                     print("請在 config/coin_configs.py 中設置 enable_monitor=True")
                     continue
-                
+
                 print(f"\n🔍 監控以下幣種:")
                 for c in enabled_configs:
                     print(f"  - {c.name} ({c.symbol})")
-                
+
                 monitor = CryptoMonitor(config)
                 monitor.monitor_coins(enabled_configs)
 
