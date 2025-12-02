@@ -17,12 +17,19 @@
 
 import logging  # 日誌記錄庫, 用於記錄監控活動
 import time  # 時間處理庫, 用於延遲和時間戳
+from datetime import timedelta  # 時間差計算
+from typing import List  # 類型提示, 提高代碼可讀性
+
+import pandas as pd  # 數據處理庫, 用於時間轉換
 import requests  # HTTP 請求庫, 用於發送 Telegram 通知
 import schedule  # 任務調度庫, 用於定時執行監控
-import pandas as pd  # 數據處理庫, 用於時間轉換
-from typing import List  # 類型提示, 提高代碼可讀性
-from strategies import CoinConfig, StrategyManager  # 導入策略相關類
+
 from data.providers.binance import BinanceDataProvider  # 導入數據提供者
+from strategies import CoinConfig, StrategyManager  # 導入策略相關類
+from utils.indicators import (
+    analyze_cumulative_metrics,
+    calculate_technical_indicators,
+)
 
 
 class CryptoMonitor:
@@ -41,16 +48,20 @@ class CryptoMonitor:
     - 市場趨勢分析工具
     """
 
-    def __init__(self, config):
+    def __init__(self, config, debug_mode=False, debug_time=None):
         """
         初始化監控器
 
         參數:
             config: 配置對象, 包含 API 設置和監控參數
+            debug_mode: 是否為 debug 模式
+            debug_time: debug 模式下的指定時間點 (datetime 對象)
         """
         self.config = config  # 保存配置對象
         self.strategy_manager = StrategyManager()  # 初始化策略管理器
         self.data_provider = BinanceDataProvider()  # 初始化數據提供者
+        self.debug_mode = debug_mode  # Debug 模式標記
+        self.debug_time = debug_time  # Debug 時間點
 
     def send_telegram_notification(self, message: str):
         """
@@ -94,24 +105,84 @@ class CryptoMonitor:
         """
         logging.info(f"🔍 檢查 {coin_config.name} 信號...")
 
-        # 獲取 320 根 K 線數據, 確保技術指標有足夠的歷史數據
-        df = self.data_provider.get_data(
-            coin_config.symbol, self.config.timeframe_str, 320
-        )
-        if df.empty:
+        # 固定窗口計算需要至少 1000 根 K 線
+        min_periods = 1000
+
+        if self.debug_mode and self.debug_time:
+            # Debug 模式: 獲取到指定時間點為止的數據
+            # 計算需要的時間範圍 (1000 根 15 分鐘 K 線 = 250 小時)
+            hours_needed = min_periods * 15 / 60  # 15分鐘 K 線
+            start_time = self.debug_time - timedelta(hours=hours_needed)
+            end_time = self.debug_time + timedelta(minutes=15)  # 包含目標時間點
+
+            logging.info(f"🐛 Debug 模式: 獲取到 {self.debug_time} 為止的數據")
+            logging.info(f"   時間範圍: {start_time} 到 {end_time}")
+            logging.info(f"   需要至少 {min_periods} 根 K 線")
+
+            # 轉換為毫秒時間戳
+            start_time_ms = int(start_time.timestamp() * 1000)
+            end_time_ms = int(end_time.timestamp() * 1000)
+
+            df = self.data_provider.get_data(
+                symbol=coin_config.symbol,
+                interval=self.config.timeframe_str,
+                limit=min_periods + 100,  # 額外加 100 根緩衝
+                start_time=start_time_ms,
+                end_time=end_time_ms,
+            )
+        else:
+            # 正常模式: 獲取最新數據（至少 1000 根）
+            df = self.data_provider.get_data(
+                coin_config.symbol, self.config.timeframe_str, min_periods + 100
+            )
+
+        if df is None or df.empty:
             logging.error(f"❌ 無法取得 {coin_config.symbol} 數據")
             return
 
-        # 統一計算所有技術指標（避免每個策略重複計算）
-        from utils.indicators import calculate_technical_indicators, analyze_cumulative_metrics
         df = calculate_technical_indicators(df)
         df = analyze_cumulative_metrics(df, window_size=16)
 
-        # 提取當前價格和時間戳
-        current_price = df["close"].iloc[-1]  # 最新收盤價
-        # 將 UTC 時間轉換為 UTC+8 (台北時間)
-        timestamp_utc = df["timestamp"].iloc[-1]
-        timestamp = timestamp_utc + pd.Timedelta(hours=8)
+        # Debug 模式: 顯示詳細信息並保存數據
+        if self.debug_mode:
+            # 保存 df 到 output 目錄
+            debug_output_path = "output/monitor_df_debug.csv"
+            df.to_csv(debug_output_path, index=False)
+            logging.info(f"🐛 Debug: 已保存 df 到 {debug_output_path}")
+
+            logging.info(f"\n📊 數據信息:")
+            logging.info(f"   總 K 線數: {len(df)}")
+            logging.info(
+                f"   時間範圍 (UTC): {df['timestamp'].min()} 到 {df['timestamp'].max()}"
+            )
+
+            # Debug 模式：找到目標時間點的數據
+            target_time_str = self.debug_time.strftime("%Y-%m-%d %H:%M:%S")
+            target_row = df[df["timestamp"] == target_time_str]
+
+            if target_row.empty:
+                logging.error(f"   ❌ 找不到目標時間點 {target_time_str}")
+                logging.info(
+                    f"   可用時間範圍: {df['timestamp'].min()} 到 {df['timestamp'].max()}"
+                )
+                return
+
+            # 使用目標時間點的數據
+            target_idx = target_row.index[0]
+            current_price = df["close"].iloc[target_idx]
+            timestamp = df["timestamp"].iloc[target_idx]
+
+            logging.info(f"   目標時間 (UTC): {timestamp}")
+            logging.info(f"   目標價格: {current_price:.2f}")
+            logging.info(f"   目標索引: {target_idx}")
+
+            # 裁剪 df 到目標時間點（模擬實時監控只能看到這個時間點之前的數據）
+            df = df.iloc[: target_idx + 1].copy()
+            logging.info(f"   裁剪後數據量: {len(df)} 根")
+        else:
+            # 正常模式：使用最新數據
+            current_price = df["close"].iloc[-1]
+            timestamp = df["timestamp"].iloc[-1]
 
         # 使用策略管理器生成綜合信號
         # 返回: signal (1=買入, -1=賣出, 0=持有), 買入強度, 賣出強度
@@ -121,31 +192,38 @@ class CryptoMonitor:
 
         # 記錄信號強度信息
         logging.info(
-            f"📊 信號強度 - 買入: {buy_strength:.1%}, " f"賣出: {sell_strength:.1%}"
+            f"\n📊 綜合信號強度 - 買入: {buy_strength:.1%}, "
+            f"賣出: {sell_strength:.1%}"
         )
 
         if signal == 1:  # 買入信號
+            # 轉換為 UTC+8 用於顯示
+            timestamp_display = timestamp + pd.Timedelta(hours=8)
+
             # 構建買入信號通知消息
             message = (
                 f"🟢 {coin_config.name} 買入信號！\n"
                 f"價格: ${current_price:.4f}\n"
-                f"時間: {timestamp}\n"
+                f"時間: {timestamp_display} (UTC+8)\n"
                 f"買入強度: {buy_strength:.1%}\n"
                 f"賣出強度: {sell_strength:.1%}"
             )
-            logging.info(f"📢 BUY 信號: {coin_config.name}")
+            logging.info(f"📢 BUY 信號: {coin_config.name} at {timestamp} UTC")
             self.send_telegram_notification(message)  # 發送通知
 
         elif signal == -1:  # 賣出信號
+            # 轉換為 UTC+8 用於顯示
+            timestamp_display = timestamp + pd.Timedelta(hours=8)
+
             # 構建賣出信號通知消息
             message = (
                 f"🔴 {coin_config.name} 賣出信號！\n"
                 f"價格: ${current_price:.4f}\n"
-                f"時間: {timestamp}\n"
+                f"時間: {timestamp_display} (UTC+8)\n"
                 f"買入強度: {buy_strength:.1%}\n"
                 f"賣出強度: {sell_strength:.1%}"
             )
-            logging.info(f"📢 SELL 信號: {coin_config.name}")
+            logging.info(f"📢 SELL 信號: {coin_config.name} at {timestamp} UTC")
             self.send_telegram_notification(message)  # 發送通知
 
     def monitor_coins(self, coin_configs: List[CoinConfig]):

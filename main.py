@@ -7,19 +7,21 @@
 - 實時監控與信號通知
 - 支援個別策略和綜合策略測試
 - 可配置的資金管理和風險控制
-
 """
 
 import argparse
+import glob
 import logging
 import os
+from datetime import datetime, timezone
 
 import matplotlib
+
 from config.coin_configs import create_coin_configs
 from config.trading_config import TradingConfig
-from trading.monitor import CryptoMonitor
-from trading.backtest import CryptoBacktester
 from tests.test_backtest import debug_mode
+from trading.backtest import CryptoBacktester
+from trading.monitor import CryptoMonitor
 
 # 設置 matplotlib 後端和字體配置
 # 使用 Agg 後端避免 GUI 依賴，適合服務器環境
@@ -81,7 +83,6 @@ def main():
     3. 綜合策略回測
     4. 實時監控
     """
-    """主程式"""
     setup_logging()
 
     parser = argparse.ArgumentParser(
@@ -90,25 +91,29 @@ def main():
 使用範例:
   1. 交互式模式（默認）:
      python main.py
-  
+
   2. Debug 回測模式:
      python main.py --debug --days 7
-  
+
   3. 分析模式:
      python main.py --analyze --start 2025-11-01 --end 2025-11-10
-     python main.py --analyze --start 2025-11-01 --end 2025-11-10 --output analysis.csv
-  
+     python main.py --analyze --start 2025-11-01 --end 2025-11-10
+         --output analysis.csv
+
   4. 視覺化模式:
      python main.py --visualize --start 2025-11-01 --end 2025-11-10
-     python main.py --visualize --start 2025-11-01 --end 2025-11-10 --methods macd lstm --output chart.png
-  
+     python main.py --visualize --start 2025-11-01 --end 2025-11-10
+         --methods macd lstm --output chart.png
+
   5. 生成訓練數據:
      python main.py --generate-data
-     python main.py --generate-data --start 2022-01-01 --end 2025-09-01 --interval 15m --window 16
-  
+     python main.py --generate-data --start 2022-01-01 --end 2025-09-01
+         --interval 15m --window 16
+
   6. 分析信號強度:
      python main.py --analyze-strength latest
-     python main.py --analyze-strength output/trades_BTCUSDT_Combined_20251128_210145.csv
+     python main.py --analyze-strength
+         output/trades_BTCUSDT_Combined_20251128_210145.csv
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -169,15 +174,82 @@ def main():
         metavar="CSV_FILE",
         help="分析交易記錄的信號強度 (指定 CSV 文件路徑，或使用 'latest' 自動選擇最新文件)",
     )
+    parser.add_argument(
+        "--debug_monitor",
+        action="store_true",
+        help="Debug 監控模式 - 測試特定時間點的信號檢測",
+    )
+    parser.add_argument(
+        "--now",
+        type=str,
+        help=(
+            "指定當前時間點 (格式: YYYY-MM-DD HH:MM 或 "
+            "YYYY-MM-DD HH:MM:SS)，用於 debug_monitor 模式"
+        ),
+    )
     args = parser.parse_args()
 
     if args.debug:
         debug_mode(args.days)
         return
 
+    if args.debug_monitor:
+        if not args.now:
+            print("❌ 錯誤: --debug_monitor 模式需要 --now 參數")
+            print("範例: python main.py --debug_monitor --now '2024-12-01 22:30'")
+            return
+
+        # 解析時間（明確指定為 UTC）
+        try:
+            if len(args.now.split(":")) == 2:
+                # 格式: YYYY-MM-DD HH:MM
+                debug_time = datetime.strptime(args.now, "%Y-%m-%d %H:%M")
+            else:
+                # 格式: YYYY-MM-DD HH:MM:SS
+                debug_time = datetime.strptime(args.now, "%Y-%m-%d %H:%M:%S")
+
+            # 明確設置為 UTC 時區
+            debug_time = debug_time.replace(tzinfo=timezone.utc)
+        except ValueError as e:
+            print(f"❌ 時間格式錯誤: {e}")
+            print("正確格式: 'YYYY-MM-DD HH:MM' 或 'YYYY-MM-DD HH:MM:SS'")
+            print("範例: '2024-12-01 22:30' 或 '2024-12-01 22:30:00'")
+            return
+
+        print("=" * 80)
+        print("🔍 Debug Monitor - 測試特定時間點的信號檢測")
+        print("=" * 80)
+        print(f"\n📅 目標時間: {debug_time.replace(tzinfo=None)} (UTC)")
+
+        config = TradingConfig()
+        coin_configs = create_coin_configs()
+
+        # 只檢測 BTC
+        btc_config = None
+        for c in coin_configs:
+            if c.symbol == "BTCUSDT":
+                btc_config = c
+                break
+
+        if not btc_config:
+            print("❌ 找不到 BTCUSDT 配置")
+            return
+
+        print(f"\n🔍 檢測幣種: {btc_config.name} ({btc_config.symbol})")
+
+        # 創建 debug 模式的 monitor
+        monitor = CryptoMonitor(config, debug_mode=True, debug_time=debug_time)
+
+        # 檢查信號
+        monitor.check_signals(btc_config)
+
+        print("\n" + "=" * 80)
+        print("✅ Debug Monitor 完成")
+        print("=" * 80)
+        return
+
     if args.analyze_strength:
         from utils.signal_strength_analyzer import analyze_signal_strength
-        import glob
 
         if args.analyze_strength.lower() == "latest":
             # 自動選擇最新的 Combined 文件
@@ -280,7 +352,7 @@ def main():
                     print("請在 config/coin_configs.py 中設置 enable_monitor=True")
                     continue
 
-                print(f"\n🔍 監控以下幣種:")
+                print("\n🔍 監控以下幣種:")
                 for c in enabled_configs:
                     print(f"  - {c.name} ({c.symbol})")
 

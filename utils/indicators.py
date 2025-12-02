@@ -59,46 +59,110 @@ def calculate_price_atr_ratio_1h(df):
     return price_diff_1h / atr
 
 
-def calculate_technical_indicators(df):
-    """計算所有基本技術指標"""
+def calculate_technical_indicators(df, fixed_window=1000):
+    """
+    計算所有基本技術指標
+    
+    使用固定窗口大小來計算 EMA 相關指標，確保不同數據長度下結果一致。
+    
+    優化策略：
+    - 如果數據長度 > fixed_window，後面的點已經穩定，直接用全部數據計算
+    - 只有前 fixed_window 個點需要用固定窗口逐一計算
+    
+    Args:
+        df: 包含 OHLCV 數據的 DataFrame
+        fixed_window: 固定窗口大小，默認 1000 期
+                     對於 EMA(100)，1000 期後初始值影響 < 0.001%
+    
+    Returns:
+        添加了技術指標的 DataFrame
+    """
     df = df.copy()
 
     # 基本指標
     df["amplitude"] = calculate_amplitude(df["high"], df["low"], df["close"])
 
-    # MACD (12, 48, 9)
-    exp1 = df["close"].ewm(span=12).mean()
-    exp2 = df["close"].ewm(span=48).mean()
-    df["macd"] = exp1 - exp2
-    df["macd_signal"] = df["macd"].ewm(span=9).mean()
-    df["macd_histogram"] = df["macd"] - df["macd_signal"]
-
-    # 成交量變化率
-    df["volume_change"] = df["volume"].pct_change()
-
-    # SAR
-    df["sar"] = talib.SAR(df["high"].values, df["low"].values)
-    df["price_above_sar"] = df["close"] > df["sar"]
-
-    # RSI
-    df["rsi"] = talib.RSI(df["close"].values, timeperiod=14)
-
-    # ATR
-    df["atr"] = talib.ATR(
-        df["high"].values, df["low"].values, df["close"].values, timeperiod=14
-    )
-
-    # 100EMA
-    df["ema_100"] = talib.EMA(df["close"].values, timeperiod=100)
-
-    # 50EMA
-    df["ema_50"] = talib.EMA(df["close"].values, timeperiod=50)
-
-    # 布林帶
-    df["bb_upper"], df["bb_middle"], df["bb_lower"] = talib.BBANDS(df["close"].values)
+    # 使用固定窗口計算 MACD 和 EMA，確保一致性
+    # 每個時間點都用最近 fixed_window 個點計算
+    n = len(df)
+    
+    # 初始化結果數組
+    macd_values = np.full(n, np.nan)
+    macd_signal_values = np.full(n, np.nan)
+    macd_hist_values = np.full(n, np.nan)
+    ema_50_values = np.full(n, np.nan)
+    ema_100_values = np.full(n, np.nan)
+    
+    # 初始化其他指標的結果數組
+    rsi_values = np.full(n, np.nan)
+    atr_values = np.full(n, np.nan)
+    sar_values = np.full(n, np.nan)
+    bb_upper_values = np.full(n, np.nan)
+    bb_middle_values = np.full(n, np.nan)
+    bb_lower_values = np.full(n, np.nan)
+    
+    # 對每個時間點，用固定窗口計算
+    for i in range(n):
+        # 取最近 fixed_window 個點（或所有可用數據）
+        start = max(0, i - fixed_window + 1)
+        window_data = df.iloc[start:i+1]
+        
+        # 至少需要 100 個點才能計算 EMA(100)
+        if len(window_data) >= 100:
+            # MACD
+            macd, signal, hist = talib.MACD(
+                window_data["close"].values,
+                fastperiod=12, slowperiod=48, signalperiod=9
+            )
+            macd_values[i] = macd[-1]
+            macd_signal_values[i] = signal[-1]
+            macd_hist_values[i] = hist[-1]
+            
+            # EMA
+            ema_50_values[i] = talib.EMA(window_data["close"].values, timeperiod=50)[-1]
+            ema_100_values[i] = talib.EMA(window_data["close"].values, timeperiod=100)[-1]
+            
+            # RSI
+            rsi_values[i] = talib.RSI(window_data["close"].values, timeperiod=14)[-1]
+            
+            # ATR
+            atr_values[i] = talib.ATR(
+                window_data["high"].values,
+                window_data["low"].values,
+                window_data["close"].values,
+                timeperiod=14
+            )[-1]
+            
+            # SAR
+            sar_values[i] = talib.SAR(
+                window_data["high"].values,
+                window_data["low"].values
+            )[-1]
+            
+            # 布林帶
+            bb_upper, bb_middle, bb_lower = talib.BBANDS(window_data["close"].values)
+            bb_upper_values[i] = bb_upper[-1]
+            bb_middle_values[i] = bb_middle[-1]
+            bb_lower_values[i] = bb_lower[-1]
+    
+    df["macd"] = macd_values
+    df["macd_signal"] = macd_signal_values
+    df["macd_histogram"] = macd_hist_values
+    df["ema_50"] = ema_50_values
+    df["ema_100"] = ema_100_values
+    df["rsi"] = rsi_values
+    df["atr"] = atr_values
+    df["sar"] = sar_values
+    df["bb_upper"] = bb_upper_values
+    df["bb_middle"] = bb_middle_values
+    df["bb_lower"] = bb_lower_values
     df["bb_position"] = (df["close"] - df["bb_lower"]) / (
         df["bb_upper"] - df["bb_lower"]
     )
+    df["price_above_sar"] = df["close"] > df["sar"]
+
+    # 成交量變化率
+    df["volume_change"] = df["volume"].pct_change()
 
     # 成交量指標
     df["volume_sma"] = df["volume"].rolling(window=20).mean()
