@@ -145,11 +145,6 @@ class CryptoMonitor:
 
         # Debug 模式: 顯示詳細信息並保存數據
         if self.debug_mode:
-            # 保存 df 到 output 目錄
-            debug_output_path = "output/monitor_df_debug.csv"
-            df.to_csv(debug_output_path, index=False)
-            logging.info(f"🐛 Debug: 已保存 df 到 {debug_output_path}")
-
             logging.info(f"\n📊 數據信息:")
             logging.info(f"   總 K 線數: {len(df)}")
             logging.info(
@@ -189,6 +184,30 @@ class CryptoMonitor:
         signal, buy_strength, sell_strength = (
             self.strategy_manager.generate_combined_signal(df, coin_config)
         )
+
+        # Debug 模式：顯示所有信號
+        if self.debug_mode:
+            logging.info(f"\n🔍 Debug: 顯示所有信號")
+            signals_all, signal_strength_all, _, _ = (
+                self.strategy_manager.generate_combined_signal_vectorized(
+                    df, coin_config
+                )
+            )
+            buy_signals = signals_all == 1
+            sell_signals = signals_all == -1
+
+            if buy_signals.sum() > 0:
+                logging.info(f"   買入信號數量: {buy_signals.sum()}")
+                for idx in df[buy_signals].index[:5]:
+                    logging.info(f"      {df.loc[idx, 'timestamp']}")
+
+            if sell_signals.sum() > 0:
+                logging.info(f"   賣出信號數量: {sell_signals.sum()}")
+                for idx in df[sell_signals].index[:5]:
+                    logging.info(f"      {df.loc[idx, 'timestamp']}")
+
+            if buy_signals.sum() == 0 and sell_signals.sum() == 0:
+                logging.info(f"   無買入或賣出信號")
 
         # 記錄信號強度信息
         logging.info(

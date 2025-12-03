@@ -5,11 +5,7 @@
 
 from .trend import TrendMLStrategy, TrendPredictionStrategy, SeparateTrendStrategy
 from .reversal import ReversalStrategy, MLReversalStrategy
-from .ml_reversal_v2 import (
-    MLReversalV2Strategy,
-    MLReversalV2BuyStrategy,
-    MLReversalV2SellStrategy,
-)
+from .ml_reversal_v2 import MLReversalV2Strategy
 from .ml_reversal_v3 import MLReversalV3Strategy
 from .ml_reversal_v4 import MLReversalV4Strategy
 from .macd_v1 import MACDV1Strategy
@@ -22,8 +18,6 @@ __all__ = [
     "ReversalStrategy",
     "MLReversalStrategy",
     "MLReversalV2Strategy",
-    "MLReversalV2BuyStrategy",
-    "MLReversalV2SellStrategy",
     "MLReversalV3Strategy",
     "MLReversalV4Strategy",
     "MACDV1Strategy",

@@ -21,12 +21,15 @@
 import logging
 import os
 import time
-import pandas as pd
-import matplotlib.pyplot as plt
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Tuple
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
+from data.providers.binance import BinanceDataProvider, DataProvider
 from strategies import CoinConfig, StrategyManager
-from data.providers.binance import DataProvider, BinanceDataProvider
+from utils.indicators import analyze_cumulative_metrics, calculate_technical_indicators
 
 
 class CryptoBacktester:
@@ -115,11 +118,11 @@ class CryptoBacktester:
             Tuple[List, float, float]: (交易記錄列表, 總報酬率, 勝率)
         """
         """向量化回測策略 - 高性能版本"""
-        
-        # 統一計算所有技術指標（避免每個策略重複計算）
-        from utils.indicators import calculate_technical_indicators, analyze_cumulative_metrics
-        df = calculate_technical_indicators(df)
-        df = analyze_cumulative_metrics(df, window_size=16)
+
+        # 檢查是否已經計算過技術指標，如果沒有就計算（向後兼容）
+        if "macd" not in df.columns:
+            df = calculate_technical_indicators(df)
+            df = analyze_cumulative_metrics(df, window_size=16)
 
         # 一次性計算所有信號 (向量化)
         if len(coin_config.strategies) == 1:
@@ -128,15 +131,16 @@ class CryptoBacktester:
             signals = strategy.generate_signals(df)
             # 單一策略的信號強度就是權重
             signal_strength = pd.Series(
-                [strategy.weight if s != 0 else 0.0 for s in signals],
-                index=df.index
+                [strategy.weight if s != 0 else 0.0 for s in signals], index=df.index
             )
         else:
             # 多策略使用策略管理器
-            signals, signal_strength, _, _ = self.strategy_manager.generate_combined_signal_vectorized(
-                df, coin_config
+            signals, signal_strength, _, _ = (
+                self.strategy_manager.generate_combined_signal_vectorized(
+                    df, coin_config
+                )
             )
-            
+
             # 信號強度閾值過濾 - 只保留強度 >= 0.3 的信號（僅用於多策略組合）
             SIGNAL_STRENGTH_THRESHOLD = 0.18
             signals = signals.where(signal_strength >= SIGNAL_STRENGTH_THRESHOLD, 0)
@@ -167,7 +171,9 @@ class CryptoBacktester:
                     "original_take_profit": actual_take_profit,
                     "level": 0,
                     "last_adjusted_level": -1,
-                    "entry_signal_strength": signal_strength.iloc[i],  # 記錄進場信號強度
+                    "entry_signal_strength": signal_strength.iloc[
+                        i
+                    ],  # 記錄進場信號強度
                 }
 
             elif signal == -1 and position is None:  # 賣出信號 (做空)
@@ -182,7 +188,9 @@ class CryptoBacktester:
                     "original_take_profit": actual_take_profit,
                     "level": 0,
                     "last_adjusted_level": -1,
-                    "entry_signal_strength": signal_strength.iloc[i],  # 記錄進場信號強度
+                    "entry_signal_strength": signal_strength.iloc[
+                        i
+                    ],  # 記錄進場信號強度
                 }
 
             elif position is not None:  # 檢查平倉條件
@@ -301,7 +309,9 @@ class CryptoBacktester:
                             / 60,
                             "capital_before": capital - pnl,  # 交易前資金
                             "capital_after": capital,  # 交易後資金
-                            "signal_strength": position.get("entry_signal_strength", 0.0),  # 進場信號強度
+                            "signal_strength": position.get(
+                                "entry_signal_strength", 0.0
+                            ),  # 進場信號強度
                         }
                     )
 
@@ -710,7 +720,7 @@ class CryptoBacktester:
         Returns:
             List[dict]: 回測結果列表，包含所有策略的詳細表現數據
         """
-        start_time = time.time()  # 記錄開始時間
+        backtest_start_time = time.time()  # 記錄回測開始時間
         os.makedirs("output", exist_ok=True)  # 確保輸出目錄存在
         all_results = []  # 存儲所有回測結果
 
@@ -718,16 +728,72 @@ class CryptoBacktester:
         for coin_config in coin_configs:
             coin_start_time = time.time()
 
-            # 先獲取數據，不管是哪種模式都需要
-            df = self.get_binance_data(
-                coin_config.symbol,
-                self.config.timeframe_str,
-                period_days * 24 * 60 // self.config.timeframe_minutes,
+            # 計算數據時間範圍（使用 UTC 時間）
+            # 固定窗口計算需要至少 1000 根 K 線
+            min_periods = 1000
+            data_end_time = datetime.utcnow()
+
+            # 計算回測期間需要的 K 線數量
+            backtest_periods = period_days * 24 * 60 // self.config.timeframe_minutes
+
+            # 總共需要的 K 線數量 = 回測期間 + warm-up 期間（1000根）
+            total_periods = backtest_periods + min_periods
+
+            # 計算開始時間（往前推 total_periods 根）
+            total_hours = total_periods * self.config.timeframe_minutes / 60
+            data_start_time = data_end_time - timedelta(hours=total_hours)
+
+            logging.info(f"🕐 數據時間範圍 (UTC):")
+            logging.info(f"   開始: {data_start_time}")
+            logging.info(f"   結束: {data_end_time}")
+            logging.info(f"   回測期間: {backtest_periods} 根 K 線")
+            logging.info(f"   Warm-up: {min_periods} 根 K 線")
+            logging.info(f"   總共需要: {total_periods} 根 K 線")
+
+            # 轉換為毫秒時間戳
+            start_time_ms = int(data_start_time.timestamp() * 1000)
+            end_time_ms = int(data_end_time.timestamp() * 1000)
+
+            # 獲取數據（額外加 100 根緩衝）
+            df = self.data_provider.get_data(
+                symbol=coin_config.symbol,
+                interval=self.config.timeframe_str,
+                limit=total_periods + 100,
+                start_time=start_time_ms,
+                end_time=end_time_ms,
             )
 
-            if df.empty:
+            if df is None or df.empty:
                 logging.error(f"❌ 無法取得 {coin_config.symbol} 數據")
                 continue
+
+            logging.info(f"✅ 獲取 {len(df)} 根 K 線")
+            logging.info(
+                f"   數據範圍: {df['timestamp'].min()} 到 {df['timestamp'].max()}"
+            )
+
+            # 計算技術指標（使用全部數據，包括 warm-up）
+            df = calculate_technical_indicators(df)
+            df = analyze_cumulative_metrics(df, window_size=16)
+
+            # 裁剪數據：只保留回測期間的數據（去掉前面的 warm-up）
+            # 計算回測開始時間
+            backtest_start_time_utc = data_end_time - timedelta(days=period_days)
+
+            # 找到回測開始的索引
+            df_backtest = df[df["timestamp"] >= backtest_start_time_utc].copy()
+
+            if df_backtest.empty:
+                logging.error(f"❌ 裁剪後沒有數據")
+                continue
+
+            logging.info(f"📍 裁剪後數據:")
+            logging.info(f"   回測開始時間: {backtest_start_time_utc}")
+            logging.info(f"   回測數據量: {len(df_backtest)} 根 K 線")
+            logging.info(f"   Warm-up 數據量: {len(df) - len(df_backtest)} 根 K 線")
+            logging.info(
+                f"   回測數據範圍: {df_backtest['timestamp'].min()} 到 {df_backtest['timestamp'].max()}"
+            )
 
             if debug_mode:
                 # Debug 模式：測試所有個別策略
@@ -752,7 +818,7 @@ class CryptoBacktester:
                     )
 
                     trades, total_return, win_rate = self.backtest_strategy_vectorized(
-                        df, temp_config, coin_config.symbol
+                        df_backtest, temp_config, coin_config.symbol
                     )
 
                     strategy_time = time.time() - strategy_start_time
@@ -780,7 +846,7 @@ class CryptoBacktester:
                     # 為個別策略生成圖表
                     if trades:
                         self.plot_backtest_results(
-                            df, trades, coin_config.symbol, strategy.name
+                            df_backtest, trades, coin_config.symbol, strategy.name
                         )
             else:
                 # 正常模式：綜合策略
@@ -789,7 +855,7 @@ class CryptoBacktester:
                 )
 
                 trades, total_return, win_rate = self.backtest_strategy_vectorized(
-                    df, coin_config, coin_config.symbol
+                    df_backtest, coin_config, coin_config.symbol
                 )
 
                 coin_time = time.time() - coin_start_time
@@ -813,7 +879,7 @@ class CryptoBacktester:
                 logging.info(f"   耗時: {coin_time:.2f}秒")
 
                 if trades:
-                    self.plot_backtest_results(df, trades, coin_config.symbol)
+                    self.plot_backtest_results(df_backtest, trades, coin_config.symbol)
 
         # 保存結果
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -837,7 +903,7 @@ class CryptoBacktester:
             f"output/backtest_results{mode_suffix}_{timestamp}.csv", index=False
         )
 
-        total_time = time.time() - start_time
+        total_time = time.time() - backtest_start_time
         logging.info(
             f"📄 結果已保存: " f"output/backtest_results{mode_suffix}_{timestamp}.csv"
         )

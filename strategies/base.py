@@ -157,14 +157,16 @@ class StrategyManager:
         Returns:
             Tuple[float, float, float]: (最新信號, 買入強度, 賣出強度)
         """
-        signals, signal_strength, _, _ = self.generate_combined_signal_vectorized(df, coin_config)
+        signals, signal_strength, _, _ = self.generate_combined_signal_vectorized(
+            df, coin_config
+        )
 
         if len(signals) == 0:
             return 0, 0.0, 0.0
 
         latest_signal = signals.iloc[-1]
         latest_strength = signal_strength.iloc[-1]
-        
+
         # 根據信號方向分配強度
         buy_strength = latest_strength if latest_signal == 1 else 0.0
         sell_strength = latest_strength if latest_signal == -1 else 0.0
@@ -182,12 +184,11 @@ class StrategyManager:
             coin_config: 幣種配置對象
 
         Returns:
-            Tuple[pd.Series, pd.Series, float, float]: 
+            Tuple[pd.Series, pd.Series, float, float]:
                 (信號序列, 信號強度序列, 買入強度, 賣出強度)
                 信號強度 = 加權分數的絕對值，範圍 [0, 總權重]
         """
         strategy_signals = []
-
         for strategy in coin_config.strategies:
             try:
                 strategy_signal = strategy.generate_signals(df)
@@ -201,10 +202,7 @@ class StrategyManager:
 
         # 向量化計算綜合信號
         signals_df = pd.DataFrame(
-            {
-                f"signal_{i}": signal
-                for i, (signal, _) in enumerate(strategy_signals)
-            }
+            {f"signal_{i}": signal for i, (signal, _) in enumerate(strategy_signals)}
         )
 
         weights = np.array([weight for _, weight in strategy_signals])
