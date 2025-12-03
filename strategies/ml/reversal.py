@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import pandas_ta as ta
 import talib
-from typing import Dict
 
 from ..base import BaseStrategy, StrategyConfig
 
@@ -114,11 +113,12 @@ class ReversalStrategy(BaseStrategy):
         return "Reversal(A轉V轉模式)"
 
 
-
 class MLReversalStrategy(BaseStrategy):
     """基於機器學習的A/V轉折預測策略"""
 
-    def __init__(self, config: StrategyConfig, model_path="models/reversal/reversal_model_v1.pkl"):
+    def __init__(
+        self, config: StrategyConfig, model_path="models/reversal/reversal_model_v1.pkl"
+    ):
         super().__init__(config)
         self.model = None
         self.load_model(model_path)
@@ -192,20 +192,22 @@ class MLReversalStrategy(BaseStrategy):
                 df["volume"]
                 .rolling(10)
                 .apply(
-                    lambda x: (np.polyfit(range(len(x)), x, 1)[0] if len(x) == 10 else 0)
+                    lambda x: (
+                        np.polyfit(range(len(x)), x, 1)[0] if len(x) == 10 else 0
+                    )
                 )
             )
 
         return df
 
     def detect_potential_reversal(self, df):
-        """檢測潛在轉折點"""
+        """檢測潛在轉折點（只看過去數據）"""
         if len(df) < 20:
             return pd.Series([False] * len(df), index=df.index)
 
-        # 檢查是否接近局部極值
-        high_20 = df["high"].rolling(20, center=True).max()
-        low_20 = df["low"].rolling(20, center=True).min()
+        # 檢查是否接近局部極值（只看過去 20 個點）
+        high_20 = df["high"].rolling(20, min_periods=1).max()
+        low_20 = df["low"].rolling(20, min_periods=1).min()
 
         is_near_high = df["close"] >= high_20 * 0.995
         is_near_low = df["close"] <= low_20 * 1.005
@@ -293,4 +295,3 @@ class MLReversalStrategy(BaseStrategy):
         signals.loc[high_conf_indices[a_turn_mask]] = -1  # 賣出
 
         return signals
-
