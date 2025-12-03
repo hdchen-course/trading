@@ -42,8 +42,8 @@ class MLReversalDetector(DetectionMethod):
         初始化檢測器
 
         Args:
-            extreme_window: 局部極值回看窗口（默認 5，即 1.25 小時）
-            window_size: 滾動窗口大小（用於計算指標）
+            extreme_window: 局部極值回看窗口（默認 10，與訓練時一致）
+            window_size: 滾動窗口大小（用於計算指標，默認 16）
             model_path: 模型檔案路徑
         """
         super().__init__("ML Reversal Detection")
@@ -74,7 +74,7 @@ class MLReversalDetector(DetectionMethod):
         """
         提取入場點的特徵，包含反轉點的上下文信息
 
-        與訓練時的特徵提取保持一致（Top 20 特徵）
+        與訓練時的特徵提取保持一致（Top 10 特徵）
 
         Args:
             df: 包含所有指標的 DataFrame（已調用 analyze_cumulative_metrics）
@@ -83,7 +83,7 @@ class MLReversalDetector(DetectionMethod):
             analysis_df: 與 df 相同（為了向後兼容保留參數）
 
         Returns:
-            特徵字典（Top 20 特徵）
+            特徵字典（Top 10 特徵）
         """
         if entry_idx < 10 or reversal_idx < 10:
             return None
@@ -96,41 +96,29 @@ class MLReversalDetector(DetectionMethod):
         if pd.isna(data_t["price_2nd"]) or pd.isna(data_entry["price_2nd"]):
             return None
 
-        # Top 20 特徵（與訓練時完全一致）
+        # Top 10 特徵（與訓練時完全一致）
         features = {
-            # [t] 反轉點的特徵
-            "bb_position_t": data_t["bb_position"],
-            "rsi_t": data_t["rsi"],
-            "macd_histogram_t": data_t["macd_histogram"],
-            "macd_t": data_t["macd"],
-            "volume_t": data_t["volume"],
-            "macd_2nd_t": data_t["macd_2nd"],
-            # [t+1/t+2] 入場點的特徵
-            "bb_position_entry": data_entry["bb_position"],
-            "rsi_entry": data_entry["rsi"],
-            "macd_histogram_entry": data_entry["macd_histogram"],
-            "macd_entry": data_entry["macd"],
-            "price_2nd_entry": data_entry["price_2nd"],
-            "macd_2nd_entry": data_entry["macd_2nd"],
-            # 變化特徵
-            "bb_position_change": data_entry["bb_position"] - data_t["bb_position"],
-            "price_change": (data_entry["close"] - data_t["close"]) / data_t["close"],
+            # 1. rsi_change (8.9%)
             "rsi_change": data_entry["rsi"] - data_t["rsi"],
-            "macd_change": data_entry["macd"] - data_t["macd"],
-            "volume_change": (
-                data_entry["volume"] / data_t["volume"] if data_t["volume"] > 0 else 1.0
-            ),
-            # 動量和波動率特徵
-            "volatility_10": df.iloc[entry_idx - 10 : entry_idx]["close"].std()
-            / df.iloc[entry_idx - 10 : entry_idx]["close"].mean(),
-            "price_momentum_10": (
-                df.iloc[entry_idx]["close"] - df.iloc[entry_idx - 10]["close"]
-            )
-            / df.iloc[entry_idx - 10]["close"],
-            "price_momentum_5": (
-                df.iloc[entry_idx]["close"] - df.iloc[entry_idx - 5]["close"]
-            )
-            / df.iloc[entry_idx - 5]["close"],
+            # 2. bb_position_change (8.5%)
+            "bb_position_change": data_entry["bb_position"] - data_t["bb_position"],
+            # 3. price_change (8.5%)
+            "price_change": (data_entry["close"] - data_t["close"]) / data_t["close"],
+            # 4. stochrsi_k_change (8.2%)
+            "stochrsi_k_change": data_entry.get("stochrsi_k", 50)
+            - data_t.get("stochrsi_k", 50),
+            # 5. bb_position_t (5.0%)
+            "bb_position_t": data_t["bb_position"],
+            # 6. macd_histogram_t (4.4%)
+            "macd_histogram_t": data_t["macd_histogram"],
+            # 7. rsi_t (3.1%)
+            "rsi_t": data_t["rsi"],
+            # 8. stochrsi_d_t (3.0%)
+            "stochrsi_d_t": data_t.get("stochrsi_d", 50),
+            # 9. stochrsi_k_entry (2.6%)
+            "stochrsi_k_entry": data_entry.get("stochrsi_k", 50),
+            # 10. macd_2nd_change (2.5%)
+            "macd_2nd_change": data_entry["macd_2nd"] - data_t["macd_2nd"],
         }
 
         return features
@@ -158,7 +146,17 @@ class MLReversalDetector(DetectionMethod):
             return np.zeros(n, dtype=bool)
 
         # 檢查必要的欄位是否存在
-        required_cols = ["rsi", "macd", "macd_histogram", "bb_position", "price_2nd"]
+        required_cols = [
+            "rsi",
+            "macd",
+            "macd_histogram",
+            "bb_position",
+            "price_2nd",
+            "macd_2nd",
+            "stochrsi_k",
+            "stochrsi_d",
+            "atr",
+        ]
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             raise ValueError(
@@ -178,28 +176,18 @@ class MLReversalDetector(DetectionMethod):
         # 信號數組：0=無信號, 1=A_turn(做空), 2=V_turn(做多)
         signals = np.zeros(n, dtype=int)
 
-        # Top 20 特徵順序（必須與訓練時一致）
+        # Top 10 特徵順序（必須與訓練時一致）
         feature_columns = [
-            "bb_position_change",
-            "price_change",
-            "rsi_change",
-            "bb_position_t",
-            "macd_histogram_t",
-            "rsi_t",
-            "bb_position_entry",
-            "macd_histogram_entry",
-            "volatility_10",
-            "rsi_entry",
-            "macd_t",
-            "volume_t",
-            "macd_entry",
-            "macd_2nd_t",
-            "price_2nd_entry",
-            "price_momentum_10",
-            "macd_change",
-            "price_momentum_5",
-            "volume_change",
-            "macd_2nd_entry",
+            "rsi_change",  # 1. 8.9%
+            "bb_position_change",  # 2. 8.5%
+            "price_change",  # 3. 8.5%
+            "stochrsi_k_change",  # 4. 8.2%
+            "bb_position_t",  # 5. 5.0%
+            "macd_histogram_t",  # 6. 4.4%
+            "rsi_t",  # 7. 3.1%
+            "stochrsi_d_t",  # 8. 3.0%
+            "stochrsi_k_entry",  # 9. 2.6%
+            "macd_2nd_change",  # 10. 2.5%
         ]
 
         # 為每個極值點檢查後續 1-2 根K線
