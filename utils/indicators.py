@@ -154,8 +154,10 @@ def calculate_technical_indicators(df, fixed_window=1000):
                 window_data["high"].values, window_data["low"].values
             )[-1]
 
-            # 布林帶
-            bb_upper, bb_middle, bb_lower = talib.BBANDS(window_data["close"].values)
+            # 布林帶 (period=32, std=2.4)
+            bb_upper, bb_middle, bb_lower = talib.BBANDS(
+                window_data["close"].values, timeperiod=32, nbdevup=2.4, nbdevdn=2.4
+            )
             bb_upper_values[i] = bb_upper[-1]
             bb_middle_values[i] = bb_middle[-1]
             bb_lower_values[i] = bb_lower[-1]
@@ -184,6 +186,10 @@ def calculate_technical_indicators(df, fixed_window=1000):
     # 成交量指標
     df["volume_sma"] = df["volume"].rolling(window=20).mean()
     df["volume_ratio"] = df["volume"] / df["volume_sma"]
+
+    # 價格動量特徵
+    df["price_change_3"] = df["close"].pct_change(3)
+    df["price_change_5"] = df["close"].pct_change(5)
 
     return df
 

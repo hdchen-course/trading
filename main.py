@@ -151,6 +151,7 @@ def main():
             "ml",
             "mlv3",
             "mlv4",
+            "mlv5",
         ],
         help="檢測方法 (visualize 模式使用，默認全部)",
     )

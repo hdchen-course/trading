@@ -6,13 +6,14 @@ ML Reversal Detection
 Stage 1: 局部極值檢測（高召回率）
 Stage 2: RandomForest 模型預測（機器學習過濾）
 
-模型特徵：
-- rsi, macd, macd_histogram, bb_position, volume_ratio
-- price_momentum_5, price_momentum_10
-- volatility_10, volume_trend
+模型特徵（Top 20）：
+- rsi_change, price_change, stochrsi_k_change (核心變化特徵)
+- bb_position, macd_histogram (技術指標)
+- price_2nd_change, vol_2nd_change (二階導數)
+- volume_change, atr_change (成交量與波動)
 
 訓練數據：2023-2025 (2年)
-驗證數據：2025 (未見過的數據)
+準確率：82.7%
 """
 
 import joblib
@@ -34,7 +35,7 @@ class MLReversalDetector(DetectionMethod):
 
     def __init__(
         self,
-        extreme_window: int = 10,
+        extreme_window: int = 20,
         window_size: int = 16,
         model_path: str = "models/reversal/reversal_model_v2.pkl",
     ):
@@ -74,7 +75,7 @@ class MLReversalDetector(DetectionMethod):
         """
         提取入場點的特徵，包含反轉點的上下文信息
 
-        與訓練時的特徵提取保持一致（Top 10 特徵）
+        與訓練時的特徵提取保持一致（Top 20 特徵）
 
         Args:
             df: 包含所有指標的 DataFrame（已調用 analyze_cumulative_metrics）
@@ -83,7 +84,7 @@ class MLReversalDetector(DetectionMethod):
             analysis_df: 與 df 相同（為了向後兼容保留參數）
 
         Returns:
-            特徵字典（Top 10 特徵）
+            特徵字典（Top 20 特徵）
         """
         if entry_idx < 10 or reversal_idx < 10:
             return None
@@ -96,29 +97,55 @@ class MLReversalDetector(DetectionMethod):
         if pd.isna(data_t["price_2nd"]) or pd.isna(data_entry["price_2nd"]):
             return None
 
-        # Top 10 特徵（與訓練時完全一致）
+        # Top 20 特徵（與訓練時完全一致）
         features = {
-            # 1. rsi_change (8.9%)
+            # 1. rsi_change (11.3%)
             "rsi_change": data_entry["rsi"] - data_t["rsi"],
-            # 2. bb_position_change (8.5%)
+            # 2. bb_position_change (5.8%)
             "bb_position_change": data_entry["bb_position"] - data_t["bb_position"],
-            # 3. price_change (8.5%)
+            # 3. price_change (11.8%)
             "price_change": (data_entry["close"] - data_t["close"]) / data_t["close"],
-            # 4. stochrsi_k_change (8.2%)
+            # 4. stochrsi_k_change (15.5%)
             "stochrsi_k_change": data_entry.get("stochrsi_k", 50)
             - data_t.get("stochrsi_k", 50),
-            # 5. bb_position_t (5.0%)
+            # 5. bb_position_t (5.7%)
             "bb_position_t": data_t["bb_position"],
-            # 6. macd_histogram_t (4.4%)
+            # 6. macd_histogram_t (6.4%)
             "macd_histogram_t": data_t["macd_histogram"],
-            # 7. rsi_t (3.1%)
+            # 7. rsi_t (7.0%)
             "rsi_t": data_t["rsi"],
-            # 8. stochrsi_d_t (3.0%)
+            # 8. stochrsi_d_t (2.8%)
             "stochrsi_d_t": data_t.get("stochrsi_d", 50),
-            # 9. stochrsi_k_entry (2.6%)
+            # 9. stochrsi_k_entry (3.4%)
             "stochrsi_k_entry": data_entry.get("stochrsi_k", 50),
-            # 10. macd_2nd_change (2.5%)
+            # 10. macd_2nd_change (3.0%)
             "macd_2nd_change": data_entry["macd_2nd"] - data_t["macd_2nd"],
+            # 11. macd_histogram_change (4.0%)
+            "macd_histogram_change": data_entry["macd_histogram"]
+            - data_t["macd_histogram"],
+            # 12. stochrsi_d_change (3.6%)
+            "stochrsi_d_change": data_entry.get("stochrsi_d", 50)
+            - data_t.get("stochrsi_d", 50),
+            # 13. bb_position_entry (3.4%)
+            "bb_position_entry": data_entry["bb_position"],
+            # 14. rsi_entry (3.1%)
+            "rsi_entry": data_entry["rsi"],
+            # 15. macd_histogram_entry (3.8%)
+            "macd_histogram_entry": data_entry["macd_histogram"],
+            # 16. price_2nd_change (2.2%)
+            "price_2nd_change": data_entry["price_2nd"] - data_t["price_2nd"],
+            # 17. vol_2nd_change (1.8%)
+            "vol_2nd_change": data_entry["vol_2nd"] - data_t["vol_2nd"],
+            # 18. volume_change (2.3%)
+            "volume_change": (
+                data_entry["volume"] / data_t["volume"] if data_t["volume"] > 0 else 1.0
+            ),
+            # 19. atr_change (2.9%)
+            "atr_change": data_entry.get("atr", 0) - data_t.get("atr", 0),
+            # 20. price_2nd_sign_changed (0.2%)
+            "price_2nd_sign_changed": int(
+                np.sign(data_t["price_2nd"]) != np.sign(data_entry["price_2nd"])
+            ),
         }
 
         return features
@@ -176,18 +203,28 @@ class MLReversalDetector(DetectionMethod):
         # 信號數組：0=無信號, 1=A_turn(做空), 2=V_turn(做多)
         signals = np.zeros(n, dtype=int)
 
-        # Top 10 特徵順序（必須與訓練時一致）
+        # Top 20 特徵順序（必須與訓練時一致）
         feature_columns = [
-            "rsi_change",  # 1. 8.9%
-            "bb_position_change",  # 2. 8.5%
-            "price_change",  # 3. 8.5%
-            "stochrsi_k_change",  # 4. 8.2%
-            "bb_position_t",  # 5. 5.0%
-            "macd_histogram_t",  # 6. 4.4%
-            "rsi_t",  # 7. 3.1%
-            "stochrsi_d_t",  # 8. 3.0%
-            "stochrsi_k_entry",  # 9. 2.6%
-            "macd_2nd_change",  # 10. 2.5%
+            "rsi_change",
+            "bb_position_change",
+            "price_change",
+            "stochrsi_k_change",
+            "bb_position_t",
+            "macd_histogram_t",
+            "rsi_t",
+            "stochrsi_d_t",
+            "stochrsi_k_entry",
+            "macd_2nd_change",
+            "macd_histogram_change",
+            "stochrsi_d_change",
+            "bb_position_entry",
+            "rsi_entry",
+            "macd_histogram_entry",
+            "price_2nd_change",
+            "vol_2nd_change",
+            "volume_change",
+            "atr_change",
+            "price_2nd_sign_changed",
         ]
 
         # 為每個極值點檢查後續 1-2 根K線

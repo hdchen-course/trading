@@ -29,19 +29,18 @@ ML Reversal V2 模型訓練腳本 - 右側入場交易
 - 2: V_turn（做多信號）
 """
 
-import joblib
-import numpy as np
-import os
-import pandas as pd
 import sys
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report
-from sklearn.model_selection import train_test_split
+import os
 
 # 添加路徑以便導入 utils
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+import joblib  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+from sklearn.ensemble import RandomForestClassifier  # noqa: E402
+from sklearn.metrics import classification_report  # noqa: E402
+from sklearn.model_selection import train_test_split  # noqa: E402
 from utils.extremes import find_local_extremes  # noqa: E402
 
 
@@ -332,7 +331,7 @@ def main(data_file=None):
     print("\n🎯 尋找候選反轉點...")
     prices = df["close"].values
     extremes, peaks, valleys = find_local_extremes(
-        prices, window=10, prominence_factor=0
+        prices, window=20, prominence_factor=0
     )
 
     print(f"   找到局部極值: {len(extremes)} 個")
@@ -340,7 +339,8 @@ def main(data_file=None):
     print(f"   谷值: {len(valleys)} 個")
 
     # 找出真實反轉點（從訓練數據）
-    true_reversal_indices = set(df[df["reverse"]].index.tolist())
+    # reverse 欄位: 0=無反轉, 1=峰值, 2=谷值
+    true_reversal_indices = set(df[df["reverse"] > 0].index.tolist())
     print(f"   真實反轉點: {len(true_reversal_indices)} 個")
 
     # 生成訓練樣本
@@ -426,7 +426,7 @@ def main(data_file=None):
     # 轉換為 DataFrame
     reversal_features = pd.DataFrame(samples)
 
-    # 準備訓練數據 - 使用 Top 10 重要特徵（基於前次訓練結果）
+    # 準備訓練數據 - 使用 Top 20 重要特徵（基於前次訓練結果）
     feature_columns = [
         "rsi_change",  # 1. 8.9%
         "bb_position_change",  # 2. 8.5%
@@ -438,13 +438,24 @@ def main(data_file=None):
         "stochrsi_d_t",  # 8. 3.0%
         "stochrsi_k_entry",  # 9. 2.6%
         "macd_2nd_change",  # 10. 2.5%
+        # 新增 Top 11-20
+        "macd_histogram_change",  # 11
+        "stochrsi_d_change",  # 12
+        "bb_position_entry",  # 13
+        "rsi_entry",  # 14
+        "macd_histogram_entry",  # 15
+        "price_2nd_change",  # 16
+        "vol_2nd_change",  # 17
+        "volume_change",  # 18
+        "atr_change",  # 19
+        "price_2nd_sign_changed",  # 20
     ]
 
-    print(f"\n✅ 特徵數量: {len(feature_columns)} 個（Top 10 重要特徵）")
+    print(f"\n✅ 特徵數量: {len(feature_columns)} 個（Top 20 重要特徵）")
     print(
         f"   Top 5: rsi_change, bb_position_change, price_change, stochrsi_k_change, bb_position_t"
     )
-    print(f"   累積重要性: 前 10 個佔 60.7%")
+    print(f"   擴展至 Top 20 以提升模型性能")
 
     # 移除缺失值
     clean_features = reversal_features.dropna(subset=feature_columns + ["label"])
