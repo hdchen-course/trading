@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import argparse
-from datetime import datetime
 import warnings
-from utils.indicators import (
-    calculate_technical_indicators,
-)
+from datetime import datetime
+
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from data.providers.binance import BinanceDataProvider
 from detection import (
+    BTCMACDBuyDetection,
     MacdReversalDetection,
     MacdVolumeDetection,
-    BTCMACDBuyDetection,
+    MLReversalDetector,
     PeakValleyDetection,
     TripleConfirmationReversalDetector,
-    MLReversalDetector,
 )
+from detection.macd_v1 import MACDV1Detector
 from detection.ml_reversal_v3 import MLReversalV3Detector
 from detection.ml_reversal_v4 import MLReversalV4Detector
-from detection.macd_v1 import MACDV1Detector
+from utils.indicators import analyze_cumulative_metrics, calculate_technical_indicators
 
 warnings.filterwarnings("ignore")
 
@@ -38,8 +39,6 @@ def fetch_data(start_date, end_date):
             len(filtered_df) > 0 and filtered_df["timestamp"].max() < end_date
         ):
             print("CSV數據不足，使用API抓取即時數據...")
-            from data.providers.binance import BinanceDataProvider
-
             provider = BinanceDataProvider()
 
             # 轉換為毫秒時間戳
@@ -89,24 +88,100 @@ def run_detection(df, detection_methods):
 
     # Calculate cumulative metrics and second derivatives (for methods that need them)
     # 這樣所有檢測器都可以使用預先計算好的指標
-    from utils.indicators import analyze_cumulative_metrics
-
     df_with_metrics = analyze_cumulative_metrics(df, window_size=16)
 
     for method in detection_methods:
-        # Get boolean array from vectorized detection
+        # Get signal array from vectorized detection
         # 傳入包含累計指標的完整數據
-        signal_mask = method.detect(df_with_metrics)
-        signal_indices = np.where(signal_mask)[0]
+        signal_array = method.detect(df_with_metrics)
+
+        # 檢查返回的是 boolean 還是 integer 類型
+        if signal_array.dtype == bool:
+            # 舊式 boolean 返回：轉換為索引
+            signal_indices = np.where(signal_array)[0]
+            signal_types = None  # 沒有方向信息
+        else:
+            # 新式 integer 返回：0=無信號, 1=做空, 2=做多
+            signal_indices = np.where(signal_array > 0)[0]
+            signal_types = signal_array[signal_indices]  # 保存信號類型
 
         results[method.name] = {
             "method": method,
             "signals": signal_indices,
-            "signal_mask": signal_mask,
+            "signal_types": signal_types,  # 新增：信號類型 (1=做空, 2=做多)
+            "signal_array": signal_array,
             "count": len(signal_indices),
         }
 
     return results
+
+
+def _annotate_signals(ax, signal_times, signal_prices, color, n_signals):
+    """
+    智能標註信號價格
+
+    Args:
+        ax: matplotlib axis
+        signal_times: 信號時間序列
+        signal_prices: 信號價格序列
+        color: 標註顏色
+        n_signals: 信號數量
+    """
+    if n_signals <= 20:
+        # 少於20個信號：全部標註
+        for time, price in zip(signal_times, signal_prices):
+            ax.annotate(
+                f"${price:.0f}",
+                xy=(time, price),
+                xytext=(10, 10),
+                textcoords="offset points",
+                fontsize=8,
+                alpha=0.7,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor=color,
+                    alpha=0.3,
+                ),
+            )
+    elif n_signals <= 50:
+        # 20-50個信號：每隔一個標註
+        for i, (time, price) in enumerate(zip(signal_times, signal_prices)):
+            if i % 2 == 0:
+                ax.annotate(
+                    f"${price:.0f}",
+                    xy=(time, price),
+                    xytext=(10, 10),
+                    textcoords="offset points",
+                    fontsize=7,
+                    alpha=0.6,
+                    bbox=dict(
+                        boxstyle="round,pad=0.2",
+                        facecolor=color,
+                        alpha=0.3,
+                    ),
+                )
+    else:
+        # 超過50個信號：只標註極值點（最高和最低的各5個）
+        prices_array = np.array(signal_prices)
+        top_5_idx = np.argsort(prices_array)[-5:]
+        bottom_5_idx = np.argsort(prices_array)[:5]
+        important_idx = set(top_5_idx) | set(bottom_5_idx)
+
+        for i, (time, price) in enumerate(zip(signal_times, signal_prices)):
+            if i in important_idx:
+                ax.annotate(
+                    f"${price:.0f}",
+                    xy=(time, price),
+                    xytext=(10, 10),
+                    textcoords="offset points",
+                    fontsize=7,
+                    alpha=0.6,
+                    bbox=dict(
+                        boxstyle="round,pad=0.2",
+                        facecolor=color,
+                        alpha=0.3,
+                    ),
+                )
 
 
 def create_visualization(df, detection_results, output_file=None):
@@ -134,21 +209,57 @@ def create_visualization(df, detection_results, output_file=None):
         for method_name, result in detection_results.items():
             method = result["method"]
             signals = result["signals"]
+            signal_types = result["signal_types"]
 
             if len(signals) > 0:
                 signal_times = df.iloc[signals]["timestamp"]
                 signal_prices = df.iloc[signals]["close"]
 
-                ax1.scatter(
-                    signal_times,
-                    signal_prices,
-                    color=method.get_color(),
-                    marker=method.get_marker(),
-                    s=10,
-                    label=f"{method_name} ({len(signals)})",
-                    alpha=0.8,
-                    zorder=5,
-                )
+                # 如果有信號類型信息，分別繪製做多和做空
+                if signal_types is not None:
+                    # 做空信號 (1): 紅色向下三角形
+                    short_mask = signal_types == 1
+                    if short_mask.any():
+                        ax1.scatter(
+                            signal_times[short_mask],
+                            signal_prices[short_mask],
+                            color="red",
+                            marker="v",  # 向下三角形
+                            s=15,
+                            label=f"{method_name} Short ({short_mask.sum()})",
+                            alpha=0.8,
+                            zorder=5,
+                            edgecolors="darkred",
+                            linewidths=1,
+                        )
+
+                    # 做多信號 (2): 綠色向上三角形
+                    long_mask = signal_types == 2
+                    if long_mask.any():
+                        ax1.scatter(
+                            signal_times[long_mask],
+                            signal_prices[long_mask],
+                            color="green",
+                            marker="^",  # 向上三角形
+                            s=15,
+                            label=f"{method_name} Long ({long_mask.sum()})",
+                            alpha=0.8,
+                            zorder=5,
+                            edgecolors="darkgreen",
+                            linewidths=1,
+                        )
+                else:
+                    # 舊式檢測器：使用原來的顏色和標記
+                    ax1.scatter(
+                        signal_times,
+                        signal_prices,
+                        color=method.get_color(),
+                        marker=method.get_marker(),
+                        s=10,
+                        label=f"{method_name} ({len(signals)})",
+                        alpha=0.8,
+                        zorder=5,
+                    )
 
         ax1.legend(loc="upper left")
 
@@ -182,21 +293,57 @@ def create_visualization(df, detection_results, output_file=None):
         for method_name, result in detection_results.items():
             method = result["method"]
             signals = result["signals"]
+            signal_types = result["signal_types"]
 
             if len(signals) > 0:
                 signal_times = df.iloc[signals]["timestamp"]
                 signal_prices = df.iloc[signals]["close"]
 
-                ax1.scatter(
-                    signal_times,
-                    signal_prices,
-                    color=method.get_color(),
-                    marker=method.get_marker(),
-                    s=10,
-                    label=f"{method_name} ({len(signals)})",
-                    alpha=0.8,
-                    zorder=5,
-                )
+                # 如果有信號類型信息，分別繪製做多和做空
+                if signal_types is not None:
+                    # 做空信號 (1): 紅色向下三角形
+                    short_mask = signal_types == 1
+                    if short_mask.any():
+                        ax1.scatter(
+                            signal_times[short_mask],
+                            signal_prices[short_mask],
+                            color="red",
+                            marker="v",
+                            s=15,
+                            label=f"{method_name} Short ({short_mask.sum()})",
+                            alpha=0.8,
+                            zorder=5,
+                            edgecolors="darkred",
+                            linewidths=0.5,
+                        )
+
+                    # 做多信號 (2): 綠色向上三角形
+                    long_mask = signal_types == 2
+                    if long_mask.any():
+                        ax1.scatter(
+                            signal_times[long_mask],
+                            signal_prices[long_mask],
+                            color="green",
+                            marker="^",
+                            s=15,
+                            label=f"{method_name} Long ({long_mask.sum()})",
+                            alpha=0.8,
+                            zorder=5,
+                            edgecolors="darkgreen",
+                            linewidths=0.5,
+                        )
+                else:
+                    # 舊式檢測器：使用原來的顏色和標記
+                    ax1.scatter(
+                        signal_times,
+                        signal_prices,
+                        color=method.get_color(),
+                        marker=method.get_marker(),
+                        s=10,
+                        label=f"{method_name} ({len(signals)})",
+                        alpha=0.8,
+                        zorder=5,
+                    )
 
         ax1.set_title(
             f"Bitcoin Price with Detection Signals (Full Range)\nTotal: {total_signals} signals",
@@ -227,29 +374,67 @@ def create_visualization(df, detection_results, output_file=None):
         for method_name, result in detection_results.items():
             method = result["method"]
             signals = result["signals"]
+            signal_types = result["signal_types"]
 
             if len(signals) > 0:
                 # Filter signals in recent 3 months
-                signal_mask = df.iloc[signals]["timestamp"] >= df[
+                time_mask = df.iloc[signals]["timestamp"] >= df[
                     "timestamp"
                 ].max() - pd.Timedelta(days=90)
-                recent_signals = signals[signal_mask]
+                recent_signals = signals[time_mask]
                 signals_3m_count += len(recent_signals)
 
                 if len(recent_signals) > 0:
                     signal_times = df.iloc[recent_signals]["timestamp"]
                     signal_prices = df.iloc[recent_signals]["close"]
 
-                    ax2.scatter(
-                        signal_times,
-                        signal_prices,
-                        color=method.get_color(),
-                        marker=method.get_marker(),
-                        s=10,
-                        label=f"{method_name} ({len(recent_signals)})",
-                        alpha=0.8,
-                        zorder=5,
-                    )
+                    # 如果有信號類型信息，分別繪製做多和做空
+                    if signal_types is not None:
+                        recent_signal_types = signal_types[time_mask]
+
+                        # 做空信號 (1): 紅色向下三角形
+                        short_mask = recent_signal_types == 1
+                        if short_mask.any():
+                            ax2.scatter(
+                                signal_times[short_mask],
+                                signal_prices[short_mask],
+                                color="red",
+                                marker="v",
+                                s=15,
+                                label=f"{method_name} Short ({short_mask.sum()})",
+                                alpha=0.8,
+                                zorder=5,
+                                edgecolors="darkred",
+                                linewidths=0.8,
+                            )
+
+                        # 做多信號 (2): 綠色向上三角形
+                        long_mask = recent_signal_types == 2
+                        if long_mask.any():
+                            ax2.scatter(
+                                signal_times[long_mask],
+                                signal_prices[long_mask],
+                                color="green",
+                                marker="^",
+                                s=15,
+                                label=f"{method_name} Long ({long_mask.sum()})",
+                                alpha=0.8,
+                                zorder=5,
+                                edgecolors="darkgreen",
+                                linewidths=0.8,
+                            )
+                    else:
+                        # 舊式檢測器：使用原來的顏色和標記
+                        ax2.scatter(
+                            signal_times,
+                            signal_prices,
+                            color=method.get_color(),
+                            marker=method.get_marker(),
+                            s=10,
+                            label=f"{method_name} ({len(recent_signals)})",
+                            alpha=0.8,
+                            zorder=5,
+                        )
 
         ax2.set_title(
             f"Last 3 Months Detail ({signals_3m_count} signals)",
@@ -280,92 +465,92 @@ def create_visualization(df, detection_results, output_file=None):
         for method_name, result in detection_results.items():
             method = result["method"]
             signals = result["signals"]
+            signal_types = result["signal_types"]
 
             if len(signals) > 0:
                 # Filter signals in recent 1 month
-                signal_mask = df.iloc[signals]["timestamp"] >= df[
+                time_mask = df.iloc[signals]["timestamp"] >= df[
                     "timestamp"
                 ].max() - pd.Timedelta(days=30)
-                recent_signals = signals[signal_mask]
+                recent_signals = signals[time_mask]
                 signals_1m_count += len(recent_signals)
 
                 if len(recent_signals) > 0:
                     signal_times = df.iloc[recent_signals]["timestamp"]
                     signal_prices = df.iloc[recent_signals]["close"]
 
-                    ax3.scatter(
-                        signal_times,
-                        signal_prices,
-                        color=method.get_color(),
-                        marker=method.get_marker(),
-                        s=10,
-                        label=f"{method_name} ({len(recent_signals)})",
-                        alpha=0.8,
-                        zorder=5,
-                    )
+                    # 如果有信號類型信息，分別繪製做多和做空
+                    if signal_types is not None:
+                        recent_signal_types = signal_types[time_mask]
 
-                    # 智能標註價格：根據信號數量調整標註策略
-                    n_signals = len(signal_times)
-                    if n_signals <= 20:
-                        # 少於20個信號：全部標註
-                        for time, price in zip(signal_times, signal_prices):
-                            ax3.annotate(
-                                f"${price:.0f}",
-                                xy=(time, price),
-                                xytext=(10, 10),
-                                textcoords="offset points",
-                                fontsize=8,
-                                alpha=0.7,
-                                bbox=dict(
-                                    boxstyle="round,pad=0.3",
-                                    facecolor=method.get_color(),
-                                    alpha=0.3,
-                                ),
+                        # 做空信號 (1): 紅色向下三角形
+                        short_mask = recent_signal_types == 1
+                        if short_mask.any():
+                            short_times = signal_times[short_mask]
+                            short_prices = signal_prices[short_mask]
+
+                            ax3.scatter(
+                                short_times,
+                                short_prices,
+                                color="red",
+                                marker="v",
+                                s=15,
+                                label=f"{method_name} Short ({short_mask.sum()})",
+                                alpha=0.8,
+                                zorder=5,
+                                edgecolors="darkred",
+                                linewidths=1,
                             )
-                    elif n_signals <= 50:
-                        # 20-50個信號：每隔一個標註
-                        for i, (time, price) in enumerate(
-                            zip(signal_times, signal_prices)
-                        ):
-                            if i % 2 == 0:
-                                ax3.annotate(
-                                    f"${price:.0f}",
-                                    xy=(time, price),
-                                    xytext=(10, 10),
-                                    textcoords="offset points",
-                                    fontsize=7,
-                                    alpha=0.6,
-                                    bbox=dict(
-                                        boxstyle="round,pad=0.2",
-                                        facecolor=method.get_color(),
-                                        alpha=0.3,
-                                    ),
-                                )
-                    else:
-                        # 超過50個信號：只標註極值點（最高和最低的幾個）
-                        prices_array = np.array(signal_prices)
-                        # 找出最高和最低的各5個
-                        top_5_idx = np.argsort(prices_array)[-5:]
-                        bottom_5_idx = np.argsort(prices_array)[:5]
-                        important_idx = set(top_5_idx) | set(bottom_5_idx)
 
-                        for i, (time, price) in enumerate(
-                            zip(signal_times, signal_prices)
-                        ):
-                            if i in important_idx:
-                                ax3.annotate(
-                                    f"${price:.0f}",
-                                    xy=(time, price),
-                                    xytext=(10, 10),
-                                    textcoords="offset points",
-                                    fontsize=7,
-                                    alpha=0.6,
-                                    bbox=dict(
-                                        boxstyle="round,pad=0.2",
-                                        facecolor=method.get_color(),
-                                        alpha=0.3,
-                                    ),
-                                )
+                            # 標註做空信號價格
+                            _annotate_signals(
+                                ax3, short_times, short_prices, "red", len(short_times)
+                            )
+
+                        # 做多信號 (2): 綠色向上三角形
+                        long_mask = recent_signal_types == 2
+                        if long_mask.any():
+                            long_times = signal_times[long_mask]
+                            long_prices = signal_prices[long_mask]
+
+                            ax3.scatter(
+                                long_times,
+                                long_prices,
+                                color="green",
+                                marker="^",
+                                s=15,
+                                label=f"{method_name} Long ({long_mask.sum()})",
+                                alpha=0.8,
+                                zorder=5,
+                                edgecolors="darkgreen",
+                                linewidths=1,
+                            )
+
+                            # 標註做多信號價格
+                            _annotate_signals(
+                                ax3, long_times, long_prices, "green", len(long_times)
+                            )
+                    else:
+                        # 舊式檢測器：使用原來的顏色和標記
+                        ax3.scatter(
+                            signal_times,
+                            signal_prices,
+                            color=method.get_color(),
+                            marker=method.get_marker(),
+                            s=10,
+                            label=f"{method_name} ({len(recent_signals)})",
+                            alpha=0.8,
+                            zorder=5,
+                        )
+
+                        # 標註價格
+                        _annotate_signals(
+                            ax3,
+                            signal_times,
+                            signal_prices,
+                            method.get_color(),
+                            len(signal_times),
+                        )
 
         # 根據信號數量添加標註說明
         if signals_1m_count <= 20:

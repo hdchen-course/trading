@@ -59,10 +59,13 @@ class PeakValleyDetection(DetectionMethod):
             df: 包含 OHLCV 數據的 DataFrame
 
         Returns:
-            布爾數組，True 表示該點為反轉點
+            整數數組：
+            - 0: 無信號
+            - 1: 波峰（做空信號）
+            - 2: 波谷（做多信號）
         """
         if len(df) < self.distance * 2:
-            return np.zeros(len(df), dtype=bool)
+            return np.zeros(len(df), dtype=int)
 
         prices = df["close"].values
 
@@ -93,10 +96,10 @@ class PeakValleyDetection(DetectionMethod):
             prices, distance=self.distance, prominence=prominence
         )
 
-        # 創建布林數組
-        result = np.zeros(len(df), dtype=bool)
+        # 創建信號數組：0=無信號, 1=做空(波峰), 2=做多(波谷)
+        result = np.zeros(len(df), dtype=int)
 
-        # 標記顯著的波谷
+        # 標記顯著的波谷 (做多信號 = 2)
         for valley_idx in valleys:
             if valley_idx < len(df):
                 valley_price = prices[valley_idx]
@@ -114,9 +117,9 @@ class PeakValleyDetection(DetectionMethod):
 
                     # 只保留顯著的波谷
                     if height_change >= self.height_threshold:
-                        result[valley_idx] = True
+                        result[valley_idx] = 2  # 做多信號
 
-        # 標記顯著的波峰
+        # 標記顯著的波峰 (做空信號 = 1)
         for peak_idx in peaks:
             if peak_idx < len(df):
                 peak_price = prices[peak_idx]
@@ -134,22 +137,23 @@ class PeakValleyDetection(DetectionMethod):
 
                     # 只保留顯著的波峰
                     if height_change >= self.height_threshold:
-                        result[peak_idx] = True
+                        result[peak_idx] = 1  # 做空信號
 
-        # 打印反轉點信息（簡化版，不依賴 analyze_cumulative_metrics）
-        reversal_indices = [i for i, is_reversal in enumerate(result) if is_reversal]
+        # 打印反轉點信息
+        signal_indices = np.where(result > 0)[0]
 
-        if reversal_indices:
-            print(f"{'時間':<20} {'價格':<10}")
-            print("-" * 30)
+        if len(signal_indices) > 0:
+            print(f"{'時間':<20} {'價格':<10} {'信號':<10}")
+            print("-" * 40)
 
-            for idx in reversal_indices:
+            for idx in signal_indices:
                 timestamp = df.iloc[idx].get(
                     "timestamp",
                     df.index[idx] if hasattr(df.index, "__getitem__") else "N/A",
                 )
                 close_price = round(float(df.iloc[idx]["close"]), 2)
-                print(f"{str(timestamp):<20} {close_price:<10}")
+                signal_type = "做空(峰)" if result[idx] == 1 else "做多(谷)"
+                print(f"{str(timestamp):<20} {close_price:<10} {signal_type:<10}")
 
         return result
 
