@@ -8,7 +8,3 @@ macd_2nd_change_t_minus_1_to_t
 volatility_entry
 amplitude_t
 volume_change_t
-atr_2nd_t
-avg_volume_t
-avg_volume_entry
-price_2nd_entry

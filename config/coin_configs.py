@@ -29,14 +29,14 @@ def create_coin_configs() -> list:
 
     # BTC - 核心策略組合（3個策略）
     # 權重根據 350 天回測勝率調整 (2024-12-19 至 2025-12-04)
-    # 總勝率: 0.8310 + 0.5008 + 0.3368 = 1.6686
+    # 總勝率: 0.8310 + 0.5008 + 0.3297 = 1.6615
     btc_strategies = [
         ReversalStrategy(
             StrategyConfig(
                 name="Reversal A/V Turn",
                 params={},
                 weight=0.8310
-                / 1.6686,  # 83.10% 勝率 → 49.81% 權重 (71次交易, 報酬417.47%)
+                / 1.6615,  # 83.10% 勝率 → 50.02% 權重 (71次交易, 報酬417.47%)
             )
         ),
         TripleConfirmationStrategy(
@@ -44,15 +44,15 @@ def create_coin_configs() -> list:
                 name="Triple Confirmation Reversal",
                 params={"distance": 20, "window_size": 16, "signal_type": "both"},
                 weight=0.5008
-                / 1.6686,  # 50.08% 勝率 → 30.01% 權重 (595次交易, 報酬1443.04%)
+                / 1.6615,  # 50.08% 勝率 → 30.14% 權重 (595次交易, 報酬1443.04%)
             )
         ),
         MLReversalV6Strategy(
             StrategyConfig(
                 name="ML Reversal V6",
                 params={"prob_threshold": 0.5},
-                weight=0.3368
-                / 1.6686,  # 33.68% 勝率 → 20.18% 權重 (95次交易, 報酬11.62%)
+                weight=0.3297
+                / 1.6615,  # 32.97% 勝率 → 19.84% 權重 (95次交易, 報酬11.62%)
             )
         ),
     ]

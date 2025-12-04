@@ -656,8 +656,8 @@ def train_and_validate(features_df: pd.DataFrame, output_dir: str = "models/reve
         col for col in features_df.columns if col not in ["label", "timestamp"]
     ]
 
-    # 使用 Top 14 重要特徵
-    top_14_features = [
+    # 使用 Top 10 重要特徵
+    top_10_features = [
         "sar_distance_pct_change_t_minus_1_to_t",
         "avg_amplitude_t",
         "sar_distance_pct_change_t_to_entry",
@@ -668,14 +668,10 @@ def train_and_validate(features_df: pd.DataFrame, output_dir: str = "models/reve
         "volatility_entry",
         "amplitude_t",
         "volume_change_t",
-        "atr_2nd_t",
-        "avg_volume_t",
-        "avg_volume_entry",
-        "price_2nd_entry",
     ]
 
-    print(f"\n🎯 使用 Top 14 重要特徵")
-    feature_cols = top_14_features
+    print(f"\n🎯 使用 Top 10 重要特徵")
+    feature_cols = top_10_features
     X = features_df[feature_cols]
     y = features_df["label"]
 

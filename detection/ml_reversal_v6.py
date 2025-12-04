@@ -2,7 +2,7 @@
 ML Reversal V6 Detection
 機器學習反轉檢測器 V6
 
-基於 2024 年數據訓練，使用 RandomForest 和 Top 14 重要特徵
+基於 2024 年數據訓練，使用 RandomForest 和 Top 10 重要特徵
 使用極值檢測 + 真實反轉點標籤
 
 訓練邏輯：
@@ -12,7 +12,7 @@ ML Reversal V6 Detection
 - 負樣本：虧損超過 0.18% 且通過嚴格過濾條件
 - 樣本平衡：1:1
 
-Top 14 重要特徵（從 49 個中選出）：
+Top 10 重要特徵（從 49 個中選出）：
 1. sar_distance_pct_change_t_minus_1_to_t
 2. avg_amplitude_t
 3. sar_distance_pct_change_t_to_entry
@@ -23,10 +23,6 @@ Top 14 重要特徵（從 49 個中選出）：
 8. volatility_entry
 9. amplitude_t
 10. volume_change_t
-11. atr_2nd_t
-12. avg_volume_t
-13. avg_volume_entry
-14. price_2nd_entry
 
 檢測過濾條件（在 ML 預測前）：
 通用條件：
@@ -45,10 +41,10 @@ Valley（做多）：
 
 模型：
 - 算法: RandomForest
-- 特徵數: 14
-- 測試準確率: 78.98%
-- ROC AUC: 0.8729
-- 正樣本召回率: 76%
+- 特徵數: 10
+- 測試準確率: 79.55%
+- ROC AUC: 0.8784
+- 正樣本召回率: 78%
 
 回測結果（350天，2024-12-19 至 2025-12-04）：
 - 交易次數: 95 次
@@ -123,7 +119,7 @@ class MLReversalV6Detector(DetectionMethod):
             entry_idx: [entry] 入場點的索引
 
         Returns:
-            特徵字典（Top 14 重要特徵）
+            特徵字典（Top 10 重要特徵）
         """
         # 確保索引有效
         if t_idx < 1 or entry_idx >= len(df):
@@ -132,78 +128,7 @@ class MLReversalV6Detector(DetectionMethod):
         features = {}
 
         try:
-            # 1. price_2nd 變化率
-            price_2nd_t_minus_1 = df.iloc[t_idx - 1]["price_2nd"]
-            price_2nd_t = df.iloc[t_idx]["price_2nd"]
-            price_2nd_entry = df.iloc[entry_idx]["price_2nd"]
-
-            if abs(price_2nd_t_minus_1) > 1e-10:
-                features["price_2nd_change_t_minus_1_to_t"] = abs(
-                    price_2nd_t - price_2nd_t_minus_1
-                ) / abs(price_2nd_t_minus_1)
-            else:
-                features["price_2nd_change_t_minus_1_to_t"] = 0.0
-
-            if abs(price_2nd_t) > 1e-10:
-                features["price_2nd_change_t_to_entry"] = abs(
-                    price_2nd_entry - price_2nd_t
-                ) / abs(price_2nd_t)
-            else:
-                features["price_2nd_change_t_to_entry"] = 0.0
-
-            # 2. macd_2nd 變化率
-            macd_2nd_t_minus_1 = df.iloc[t_idx - 1]["macd_2nd"]
-            macd_2nd_t = df.iloc[t_idx]["macd_2nd"]
-
-            if abs(macd_2nd_t_minus_1) > 1e-10:
-                features["macd_2nd_change_t_minus_1_to_t"] = abs(
-                    macd_2nd_t - macd_2nd_t_minus_1
-                ) / abs(macd_2nd_t_minus_1)
-            else:
-                features["macd_2nd_change_t_minus_1_to_t"] = 0.0
-
-            # 3. vol_2nd 變化率
-            vol_2nd_t_minus_1 = df.iloc[t_idx - 1]["vol_2nd"]
-            vol_2nd_t = df.iloc[t_idx]["vol_2nd"]
-            vol_2nd_entry = df.iloc[entry_idx]["vol_2nd"]
-
-            if abs(vol_2nd_t_minus_1) > 1e-10:
-                features["vol_2nd_change_t_minus_1_to_t"] = abs(
-                    vol_2nd_t - vol_2nd_t_minus_1
-                ) / abs(vol_2nd_t_minus_1)
-            else:
-                features["vol_2nd_change_t_minus_1_to_t"] = 0.0
-
-            if abs(vol_2nd_t) > 1e-10:
-                features["vol_2nd_change_t_to_entry"] = abs(
-                    vol_2nd_entry - vol_2nd_t
-                ) / abs(vol_2nd_t)
-            else:
-                features["vol_2nd_change_t_to_entry"] = 0.0
-
-            # 4. macd_histogram 變化率
-            macd_hist_t = df.iloc[t_idx]["macd_histogram"]
-            macd_hist_entry = df.iloc[entry_idx]["macd_histogram"]
-
-            if abs(macd_hist_t) > 1e-10:
-                features["macd_histogram_change_t_to_entry"] = abs(
-                    macd_hist_entry - macd_hist_t
-                ) / abs(macd_hist_t)
-            else:
-                features["macd_histogram_change_t_to_entry"] = 0.0
-
-            # 5. stochrsi_k 變化率
-            stochrsi_k_t_minus_1 = df.iloc[t_idx - 1]["stochrsi_k"]
-            stochrsi_k_t = df.iloc[t_idx]["stochrsi_k"]
-
-            if abs(stochrsi_k_t_minus_1) > 1e-10:
-                features["stochrsi_k_change_t_minus_1_to_t"] = abs(
-                    stochrsi_k_t - stochrsi_k_t_minus_1
-                ) / abs(stochrsi_k_t_minus_1)
-            else:
-                features["stochrsi_k_change_t_minus_1_to_t"] = 0.0
-
-            # 6. sar_distance_pct 變化率
+            # 1. sar_distance_pct 變化率
             sar_dist_t_minus_1 = df.iloc[t_idx - 1]["sar_distance_pct"]
             sar_dist_t = df.iloc[t_idx]["sar_distance_pct"]
             sar_dist_entry = df.iloc[entry_idx]["sar_distance_pct"]
@@ -222,19 +147,37 @@ class MLReversalV6Detector(DetectionMethod):
             else:
                 features["sar_distance_pct_change_t_to_entry"] = 0.0
 
-            # 7. 原始值特徵 [t] (Top 14 中的 [t] 特徵)
+            # 2. macd_histogram 變化率
+            macd_hist_t = df.iloc[t_idx]["macd_histogram"]
+            macd_hist_entry = df.iloc[entry_idx]["macd_histogram"]
+
+            if abs(macd_hist_t) > 1e-10:
+                features["macd_histogram_change_t_to_entry"] = abs(
+                    macd_hist_entry - macd_hist_t
+                ) / abs(macd_hist_t)
+            else:
+                features["macd_histogram_change_t_to_entry"] = 0.0
+
+            # 3. macd_2nd 變化率
+            macd_2nd_t_minus_1 = df.iloc[t_idx - 1]["macd_2nd"]
+            macd_2nd_t = df.iloc[t_idx]["macd_2nd"]
+
+            if abs(macd_2nd_t_minus_1) > 1e-10:
+                features["macd_2nd_change_t_minus_1_to_t"] = abs(
+                    macd_2nd_t - macd_2nd_t_minus_1
+                ) / abs(macd_2nd_t_minus_1)
+            else:
+                features["macd_2nd_change_t_minus_1_to_t"] = 0.0
+
+            # 4. 原始值特徵 [t] (Top 10 中的 [t] 特徵)
             features["avg_amplitude_t"] = df.iloc[t_idx]["avg_amplitude"]
             features["volatility_t"] = df.iloc[t_idx]["volatility"]
             features["amplitude_t"] = df.iloc[t_idx]["amplitude"]
             features["volume_change_t"] = df.iloc[t_idx]["volume_change"]
-            features["atr_2nd_t"] = df.iloc[t_idx]["atr_2nd"]
-            features["avg_volume_t"] = df.iloc[t_idx]["avg_volume"]
 
-            # 8. 原始值特徵 [entry] (Top 14 中的 [entry] 特徵)
+            # 5. 原始值特徵 [entry] (Top 10 中的 [entry] 特徵)
             features["avg_amplitude_entry"] = df.iloc[entry_idx]["avg_amplitude"]
             features["volatility_entry"] = df.iloc[entry_idx]["volatility"]
-            features["avg_volume_entry"] = df.iloc[entry_idx]["avg_volume"]
-            features["price_2nd_entry"] = df.iloc[entry_idx]["price_2nd"]
 
             # 檢查是否有 NaN
             for key, value in features.items():
