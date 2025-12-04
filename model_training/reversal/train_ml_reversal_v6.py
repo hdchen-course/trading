@@ -7,7 +7,8 @@ ML Reversal V6 模型訓練腳本
 改進：
 - 添加 sar_distance_pct 和 sar_distance_2nd 特徵
 - 使用 2024 年完整數據訓練
-- XGBoost 模型
+- RandomForest 模型
+- 49 個特徵（變化率 + [t] 原始值 + [entry] 原始值）
 """
 
 import sys
@@ -119,9 +120,9 @@ def filter_candidates(df: pd.DataFrame) -> list:
     print("🎯 (2) 篩選候選樣本 - 局部極值檢測")
     print("=" * 80)
 
-    print(f"\n使用 find_local_extremes:")
-    print(f"   window = 20")
-    print(f"   prominence_factor = 0.3")
+    print("\n使用 find_local_extremes:")
+    print("   window = 20")
+    print("   prominence_factor = 0.3")
 
     # 使用 find_local_extremes 找出極值點
     prices = df["close"].values
@@ -144,15 +145,18 @@ def filter_candidates(df: pd.DataFrame) -> list:
 
 def generate_labels(df: pd.DataFrame, extreme_indices: list) -> tuple:
     """
-    生成訓練標籤 - 基於真實反轉點和止損/止盈邏輯
+    生成訓練標籤 - 只使用真實反轉點作為正樣本，嚴格過濾負樣本
 
-    邏輯：
-    1. 候選點 [t] 由 find_local_extremes 找出
-    2. 入場點為 [t+1]
-    3. 如果候選點是真實反轉點 => 正樣本
-    4. 如果不是真實反轉點，檢查入場後 4 小時內：
-       - 沒有虧損 0.18% 且曾經浮盈 1% => 正樣本
-       - 其餘 => 負樣本
+    正樣本：
+    - 候選點是真實反轉點
+
+    負樣本過濾條件（全部滿足才是負樣本）：
+    1. |sar_distance_pct| > 1.3%
+    2. peak 在 SAR 上方，valley 在 SAR 下方
+    3. peak 在 bb_middle 上方，valley 在 bb_middle 下方
+    4. [t-1] -> [t] 價格變化 < 0.5%
+    5. peak: entry < t_price, valley: entry > t_price
+    6. 入場後會虧損（stop loss = 0.18%）
 
     Args:
         df: 完整數據
@@ -165,11 +169,17 @@ def generate_labels(df: pd.DataFrame, extreme_indices: list) -> tuple:
     print("🏷️  (3) 生成標籤")
     print("=" * 80)
 
-    print(f"\n標籤邏輯:")
-    print(f"   候選點: [t] (由 find_local_extremes 找出)")
-    print(f"   入場點: [t+1]")
-    print(f"   正樣本條件: 候選點是真實反轉點")
-    print(f"   負樣本條件: 虧損超過 0.35% 且 |sar_distance_pct| < 1.22%")
+    print("\n標籤邏輯:")
+    print("   候選點: [t] (由 find_local_extremes 找出)")
+    print("   入場點: [t+1]")
+    print("   正樣本: 真實反轉點")
+    print("   負樣本過濾條件（全部滿足）:")
+    print("     1. |sar_distance_pct| > 1.3%")
+    print("     2. peak 在 SAR 上方，valley 在 SAR 下方")
+    print("     3. peak 在 bb_middle 上方，valley 在 bb_middle 下方")
+    print("     4. [t-1] -> [t] 價格變化 < 0.5%")
+    print("     5. peak: entry < t_price, valley: entry > t_price")
+    print("     6. 入場後會虧損（stop loss = 0.18%）")
 
     labels = []
     t_indices = []  # 候選點索引
@@ -178,6 +188,7 @@ def generate_labels(df: pd.DataFrame, extreme_indices: list) -> tuple:
     # 統計
     true_reversal_positive = 0  # 真實反轉點的正樣本
     negative = 0  # 負樣本
+    filtered_out = 0  # 被過濾掉的候選點
 
     max_holding_bars = 16  # 4 小時 = 16 根 15 分鐘 K 線
 
@@ -185,13 +196,13 @@ def generate_labels(df: pd.DataFrame, extreme_indices: list) -> tuple:
     true_reversal_set = set(df[df["reverse"] == 1].index.tolist())
 
     for t_idx in extreme_indices:
-        # 確保有足夠的未來數據
-        if t_idx + 1 + max_holding_bars >= len(df):
+        # 確保有足夠的數據
+        if t_idx < 1 or t_idx + 1 + max_holding_bars >= len(df):
             continue
 
         entry_idx = t_idx + 1
 
-        # 條件 1: 檢查是否為真實反轉點
+        # === 正樣本：檢查是否為真實反轉點 ===
         if t_idx in true_reversal_set:
             label = 1  # 正樣本
             labels.append(label)
@@ -200,20 +211,64 @@ def generate_labels(df: pd.DataFrame, extreme_indices: list) -> tuple:
             true_reversal_positive += 1
             continue
 
-        # 條件 2: 檢查是否為負樣本
-        entry_price = df.iloc[entry_idx]["close"]
+        # === 負樣本：嚴格過濾 ===
         t_price = df.iloc[t_idx]["close"]
+        entry_price = df.iloc[entry_idx]["close"]
+        t_minus_1_price = df.iloc[t_idx - 1]["close"]
 
-        # 判斷交易方向（峰值做空，谷值做多）
-        if t_idx > 0 and t_idx < len(df) - 1:
-            prev_price = df.iloc[t_idx - 1]["close"]
-            next_price = df.iloc[t_idx + 1]["close"]
-            is_peak = t_price > prev_price and t_price > next_price
-        else:
+        # 獲取必要指標
+        sar_distance_pct = df.iloc[t_idx]["sar_distance_pct"]
+        sar_price = df.iloc[t_idx]["sar"]
+        bb_middle = df.iloc[t_idx]["bb_middle"]
+
+        # 判斷是 peak 還是 valley
+        prev_price = df.iloc[t_idx - 1]["close"]
+        next_price = df.iloc[t_idx + 1]["close"]
+        is_peak = t_price > prev_price and t_price > next_price
+
+        # 過濾條件 1: |sar_distance_pct| > 1.3%
+        if abs(sar_distance_pct) <= 1.3:
+            filtered_out += 1
             continue
 
-        # 模擬交易
-        max_loss_pct = 0.0  # 追蹤最大虧損
+        # 過濾條件 2: peak 在 SAR 上方，valley 在 SAR 下方
+        if is_peak:
+            if t_price <= sar_price:  # peak 必須在 SAR 上方
+                filtered_out += 1
+                continue
+        else:  # valley
+            if t_price >= sar_price:  # valley 必須在 SAR 下方
+                filtered_out += 1
+                continue
+
+        # 過濾條件 3: peak 在 bb_middle 上方，valley 在 bb_middle 下方
+        if is_peak:
+            if t_price <= bb_middle:  # peak 必須在 bb_middle 上方
+                filtered_out += 1
+                continue
+        else:  # valley
+            if t_price >= bb_middle:  # valley 必須在 bb_middle 下方
+                filtered_out += 1
+                continue
+
+        # 過濾條件 4: [t-1] -> [t] 價格變化 < 0.5%
+        price_change_pct = abs((t_price - t_minus_1_price) / t_minus_1_price) * 100
+        if price_change_pct >= 0.5:
+            filtered_out += 1
+            continue
+
+        # 過濾條件 5: peak: entry < t_price, valley: entry > t_price
+        if is_peak:
+            if entry_price >= t_price:  # entry 必須低於 peak
+                filtered_out += 1
+                continue
+        else:  # valley
+            if entry_price <= t_price:  # entry 必須高於 valley
+                filtered_out += 1
+                continue
+
+        # 過濾條件 6: 入場後會虧損（stop loss = 0.18%）
+        max_loss_pct = 0.0
 
         for i in range(1, max_holding_bars + 1):
             future_idx = entry_idx + i
@@ -227,21 +282,18 @@ def generate_labels(df: pd.DataFrame, extreme_indices: list) -> tuple:
             else:  # 做多
                 pnl_pct = (future_price - entry_price) / entry_price * 100
 
-            # 追蹤最大虧損
             if pnl_pct < max_loss_pct:
                 max_loss_pct = pnl_pct
 
-        # 生成負樣本標籤
-        # 負樣本：虧損超過 0.35% 且 |sar_distance_pct| < 1.22%
-        if max_loss_pct <= -0.35:
-            # 檢查 SAR 距離條件
-            sar_dist = abs(df.iloc[t_idx]["sar_distance_pct"])
-            if sar_dist < 1.22:
-                label = 0  # 負樣本：虧損超過 0.35% 且 SAR 距離小
-                labels.append(label)
-                t_indices.append(t_idx)
-                entry_indices.append(entry_idx)
-                negative += 1
+        # 只有虧損超過 0.18% 才是負樣本
+        if max_loss_pct <= -0.18:
+            label = 0  # 負樣本
+            labels.append(label)
+            t_indices.append(t_idx)
+            entry_indices.append(entry_idx)
+            negative += 1
+        else:
+            filtered_out += 1
 
     # 統計標籤分佈
     positive_count = sum(labels)
@@ -251,6 +303,7 @@ def generate_labels(df: pd.DataFrame, extreme_indices: list) -> tuple:
     print(f"   正樣本總數: {positive_count} 個 ({positive_count/len(labels)*100:.2f}%)")
     print(f"     - 真實反轉點: {true_reversal_positive} 個")
     print(f"   負樣本總數: {negative_count} 個 ({negative_count/len(labels)*100:.2f}%)")
+    print(f"   被過濾掉: {filtered_out} 個")
     print(f"   總樣本數: {len(labels)} 個")
 
     # 顯示樣本示例
@@ -316,17 +369,24 @@ def extract_features(
     print("🔧 (4) 提取特徵 - 變化率特徵")
     print("=" * 80)
 
-    print(f"\n特徵策略: 計算關鍵指標的變化率")
-    print(f"   共 12 個特徵 (移除 bb_position):")
-    print(f"   1. price_2nd: [t-1]->[t], [t]->[entry]")
-    print(f"   2. macd_2nd: [t-1]->[t]")
-    print(f"   3. vol_2nd: [t-1]->[t], [t]->[entry]")
-    print(f"   4. macd_histogram: [t]->[entry]")
-    print(f"   5. stochrsi_k: [t-1]->[t]")
-    print(f"   6. sar_distance_pct: [t-1]->[t], [t]->[entry]")
-    print(f"   7. price_change_3: [t] 的值")
-    print(f"   8. price_change_5: [t] 的值")
-    print(f"   9. price_atr_ratio_1h: [t] 的值")
+    print("\n特徵策略: 計算關鍵指標的變化率 + 原始值")
+    print("   共 49 個特徵:")
+    print("   變化率特徵 (9個):")
+    print("   1. price_2nd: [t-1]->[t], [t]->[entry]")
+    print("   2. macd_2nd: [t-1]->[t]")
+    print("   3. vol_2nd: [t-1]->[t], [t]->[entry]")
+    print("   4. macd_histogram: [t]->[entry]")
+    print("   5. stochrsi_k: [t-1]->[t]")
+    print("   6. sar_distance_pct: [t-1]->[t], [t]->[entry]")
+    print("   原始值特徵 [t] (20個):")
+    print("   7. price_change_3, price_change_5, price_atr_ratio_1h")
+    print("   8. volume_ratio, volume_change")
+    print("   9. amplitude, open, high, low, close")
+    print("   10. macd_2nd, price_2nd, vol_2nd, atr_2nd")
+    print("   11. volume_trend, volatility, avg_amplitude, avg_volume")
+    print("   12. ema_100, ema_50")
+    print("   原始值特徵 [entry] (20個):")
+    print("   13. 同上，但取 [entry] 的值")
 
     feature_samples = []
 
@@ -431,10 +491,49 @@ def extract_features(
         else:
             features["sar_distance_pct_change_t_to_entry"] = 0.0
 
-        # 7. price_change_3, price_change_5, price_atr_ratio_1h (移除 bb_position)
-        features["price_change_3"] = df.iloc[t_idx]["price_change_3"]
-        features["price_change_5"] = df.iloc[t_idx]["price_change_5"]
-        features["price_atr_ratio_1h"] = df.iloc[t_idx]["price_atr_ratio_1h"]
+        # 7. 原始值特徵 [t] (20個)
+        features["price_change_3_t"] = df.iloc[t_idx]["price_change_3"]
+        features["price_change_5_t"] = df.iloc[t_idx]["price_change_5"]
+        features["price_atr_ratio_1h_t"] = df.iloc[t_idx]["price_atr_ratio_1h"]
+        features["volume_ratio_t"] = df.iloc[t_idx]["volume_ratio"]
+        features["volume_change_t"] = df.iloc[t_idx]["volume_change"]
+        features["amplitude_t"] = df.iloc[t_idx]["amplitude"]
+        features["open_t"] = df.iloc[t_idx]["open"]
+        features["high_t"] = df.iloc[t_idx]["high"]
+        features["low_t"] = df.iloc[t_idx]["low"]
+        features["close_t"] = df.iloc[t_idx]["close"]
+        features["macd_2nd_t"] = df.iloc[t_idx]["macd_2nd"]
+        features["price_2nd_t"] = df.iloc[t_idx]["price_2nd"]
+        features["vol_2nd_t"] = df.iloc[t_idx]["vol_2nd"]
+        features["atr_2nd_t"] = df.iloc[t_idx]["atr_2nd"]
+        features["volume_trend_t"] = df.iloc[t_idx]["volume_trend"]
+        features["volatility_t"] = df.iloc[t_idx]["volatility"]
+        features["avg_amplitude_t"] = df.iloc[t_idx]["avg_amplitude"]
+        features["avg_volume_t"] = df.iloc[t_idx]["avg_volume"]
+        features["ema_100_t"] = df.iloc[t_idx]["ema_100"]
+        features["ema_50_t"] = df.iloc[t_idx]["ema_50"]
+
+        # 8. 原始值特徵 [entry] (20個)
+        features["price_change_3_entry"] = df.iloc[entry_idx]["price_change_3"]
+        features["price_change_5_entry"] = df.iloc[entry_idx]["price_change_5"]
+        features["price_atr_ratio_1h_entry"] = df.iloc[entry_idx]["price_atr_ratio_1h"]
+        features["volume_ratio_entry"] = df.iloc[entry_idx]["volume_ratio"]
+        features["volume_change_entry"] = df.iloc[entry_idx]["volume_change"]
+        features["amplitude_entry"] = df.iloc[entry_idx]["amplitude"]
+        features["open_entry"] = df.iloc[entry_idx]["open"]
+        features["high_entry"] = df.iloc[entry_idx]["high"]
+        features["low_entry"] = df.iloc[entry_idx]["low"]
+        features["close_entry"] = df.iloc[entry_idx]["close"]
+        features["macd_2nd_entry"] = df.iloc[entry_idx]["macd_2nd"]
+        features["price_2nd_entry"] = df.iloc[entry_idx]["price_2nd"]
+        features["vol_2nd_entry"] = df.iloc[entry_idx]["vol_2nd"]
+        features["atr_2nd_entry"] = df.iloc[entry_idx]["atr_2nd"]
+        features["volume_trend_entry"] = df.iloc[entry_idx]["volume_trend"]
+        features["volatility_entry"] = df.iloc[entry_idx]["volatility"]
+        features["avg_amplitude_entry"] = df.iloc[entry_idx]["avg_amplitude"]
+        features["avg_volume_entry"] = df.iloc[entry_idx]["avg_volume"]
+        features["ema_100_entry"] = df.iloc[entry_idx]["ema_100"]
+        features["ema_50_entry"] = df.iloc[entry_idx]["ema_50"]
 
         # 添加標籤和時間戳
         features["label"] = label
@@ -445,9 +544,9 @@ def extract_features(
     # 轉換為 DataFrame
     features_df = pd.DataFrame(feature_samples)
 
-    print(f"\n✅ 特徵提取完成:")
+    print("\n✅ 特徵提取完成:")
     print(f"   樣本數: {len(features_df)}")
-    print(f"   特徵數: 9 個")
+    print("   特徵數: 9 個")
 
     # 檢查缺失值
     feature_cols = [
@@ -462,7 +561,7 @@ def extract_features(
         features_df = features_df.dropna(subset=feature_cols)
         print(f"   清理後樣本數: {len(features_df)} 個")
     else:
-        print(f"\n✅ 無缺失值")
+        print("\n✅ 無缺失值")
 
     # 最終統計
     final_positive = features_df["label"].sum()
@@ -506,7 +605,7 @@ def balance_samples(features_df: pd.DataFrame) -> pd.DataFrame:
     n_positive = len(positive_samples)
     n_negative = len(negative_samples)
 
-    print(f"\n原始樣本分佈:")
+    print("\n原始樣本分佈:")
     print(f"   正樣本: {n_positive} 個")
     print(f"   負樣本: {n_negative} 個")
     print(f"   比例: 1:{n_negative/n_positive:.2f}")
@@ -531,7 +630,7 @@ def balance_samples(features_df: pd.DataFrame) -> pd.DataFrame:
     balanced_df = pd.concat([positive_samples_balanced, negative_samples_balanced])
     balanced_df = balanced_df.sample(frac=1, random_state=42).reset_index(drop=True)
 
-    print(f"\n✅ 平衡後樣本分佈:")
+    print("\n✅ 平衡衡後樣本分佈:")
     print(f"   正樣本: {len(positive_samples_balanced)} 個 (50.00%)")
     print(f"   負樣本: {len(negative_samples_balanced)} 個 (50.00%)")
     print(f"   總樣本數: {len(balanced_df)} 個")
@@ -553,14 +652,35 @@ def train_and_validate(features_df: pd.DataFrame, output_dir: str = "models/reve
     print("=" * 80)
 
     # 準備特徵和標籤
-    feature_cols = [
+    all_feature_cols = [
         col for col in features_df.columns if col not in ["label", "timestamp"]
     ]
+
+    # 使用 Top 14 重要特徵
+    top_14_features = [
+        "sar_distance_pct_change_t_minus_1_to_t",
+        "avg_amplitude_t",
+        "sar_distance_pct_change_t_to_entry",
+        "avg_amplitude_entry",
+        "volatility_t",
+        "macd_histogram_change_t_to_entry",
+        "macd_2nd_change_t_minus_1_to_t",
+        "volatility_entry",
+        "amplitude_t",
+        "volume_change_t",
+        "atr_2nd_t",
+        "avg_volume_t",
+        "avg_volume_entry",
+        "price_2nd_entry",
+    ]
+
+    print(f"\n🎯 使用 Top 14 重要特徵")
+    feature_cols = top_14_features
     X = features_df[feature_cols]
     y = features_df["label"]
 
     print(f"\n數據準備:")
-    print(f"   特徵數: {len(feature_cols)}")
+    print(f"   特徵數: {len(feature_cols)} (從 {len(all_feature_cols)} 個中選出)")
     print(f"   樣本數: {len(X)}")
     print(f"   正樣本: {y.sum()} 個 ({y.sum()/len(y)*100:.2f}%)")
     print(f"   負樣本: {len(y) - y.sum()} 個 ({(len(y) - y.sum())/len(y)*100:.2f}%)")
@@ -578,19 +698,23 @@ def train_and_validate(features_df: pd.DataFrame, output_dir: str = "models/reve
     print(f"\n🌲 訓練 RandomForest 模型...")
     print(f"   最終優化版本:")
     print(f"   - n_estimators=500 (增加樹的數量)")
-    print(f"   - max_depth=5 (降低深度減少過擬合)")
-    print(f"   - min_samples_split=15 (提高分裂門檻)")
-    print(f"   - min_samples_leaf=8 (提高葉節點門檻)")
-    print(f"   - max_features='sqrt' (使用 sqrt(n_features))")
-    print(f"   - max_samples=0.75 (每棵樹用 75% 樣本，增加多樣性)")
+    print(f"   - max_depth=3 (降低深度減少過擬合)")
+    print(f"   - min_samples_split=25 (提高分裂門檻)")
+    print(f"   - min_samples_leaf=12 (提高葉節點門檻)")
+    print(f"   - max_features=0.4 (每次分裂考慮 40% 特徵)")
+    print(f"   - max_samples=0.6 (每棵樹用 60% 樣本，增加多樣性)")
+    print(f"   - min_impurity_decrease=0.001 (分裂必須帶來足夠信息增益)")
+    print(f"   - ccp_alpha=0.001 (成本複雜度剪枝)")
 
     rf_model = RandomForestClassifier(
         n_estimators=500,
-        max_depth=5,
-        min_samples_split=15,
-        min_samples_leaf=8,
-        max_features="sqrt",
-        max_samples=0.75,
+        max_depth=3,
+        min_samples_split=25,
+        min_samples_leaf=12,
+        max_features=0.4,
+        max_samples=0.6,
+        min_impurity_decrease=0.001,
+        ccp_alpha=0.001,
         random_state=42,
         n_jobs=-1,
     )
