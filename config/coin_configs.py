@@ -18,53 +18,36 @@ from strategies import (
     ReversalStrategy,
     TripleConfirmationStrategy,
 )
-from strategies.ml import (
-    MLReversalV2Strategy,
-    MLReversalV5Strategy,
-)
+
+# ML 策略暫時不使用
+# from strategies.ml import (
+#     MLReversalV2Strategy,
+#     MLReversalV5Strategy,
+#     MLReversalV6Strategy,
+# )
 
 
 def create_coin_configs() -> list:
     """創建各幣種的策略配置"""
 
-    # BTC - 核心策略組合（4個精選策略）
-    # 權重根據 300 天回測勝率調整 (2025-02-06 至 2025-12-03)
-    # 總勝率: 0.8913 + 0.4936 + 0.3317 + 0.3433 = 2.0599
+    # BTC - 核心策略組合（2個精選策略）
+    # 權重根據 350 天回測勝率調整 (2024-12-19 至 2025-12-04)
+    # 總勝率: 0.8310 + 0.5008 = 1.3318
     btc_strategies = [
         ReversalStrategy(
             StrategyConfig(
                 name="Reversal A/V Turn",
                 params={},
-                weight=0.8913
-                / 2.0599,  # 89.13% 勝率 → 43.27% 權重 (46次交易, 報酬209.33%)
+                weight=0.8310
+                / 1.3318,  # 83.10% 勝率 → 62.40% 權重 (71次交易, 報酬417.47%)
             )
         ),
         TripleConfirmationStrategy(
             StrategyConfig(
                 name="Triple Confirmation Reversal",
                 params={"distance": 20, "window_size": 16, "signal_type": "both"},
-                weight=0.4936
-                / 2.0599,  # 49.36% 勝率 → 23.96% 權重 (628次交易, 報酬1483.10%)
-            )
-        ),
-        MLReversalV2Strategy(
-            StrategyConfig(
-                name="ML Reversal V2",
-                params={"distance": 20, "window_size": 16, "signal_type": "both"},
-                weight=0.3317
-                / 2.0599,  # 33.17% 勝率 → 16.10% 權重 (1319次交易, 報酬543.18%)
-            )
-        ),
-        MLReversalV5Strategy(
-            StrategyConfig(
-                name="ML Reversal V5",
-                params={
-                    "prob_threshold": 0.5,
-                    "signal_type": "both",
-                    "stochrsi_threshold_high": 90,
-                    "stochrsi_threshold_low": 10,
-                },
-                weight=0.3433 / 2.0599,  # 34.33% 勝率 → 16.67% 權重 (871次交易, 報酬283.14%)
+                weight=0.5008
+                / 1.3318,  # 50.08% 勝率 → 37.60% 權重 (595次交易, 報酬1443.04%)
             )
         ),
     ]

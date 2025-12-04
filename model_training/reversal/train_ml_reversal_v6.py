@@ -317,7 +317,7 @@ def extract_features(
     print("=" * 80)
 
     print(f"\n特徵策略: 計算關鍵指標的變化率")
-    print(f"   共 12 個特徵:")
+    print(f"   共 12 個特徵 (移除 bb_position):")
     print(f"   1. price_2nd: [t-1]->[t], [t]->[entry]")
     print(f"   2. macd_2nd: [t-1]->[t]")
     print(f"   3. vol_2nd: [t-1]->[t], [t]->[entry]")
@@ -431,11 +431,10 @@ def extract_features(
         else:
             features["sar_distance_pct_change_t_to_entry"] = 0.0
 
-        # 7. price_change_3, price_change_5, price_atr_ratio_1h 和 bb_position
+        # 7. price_change_3, price_change_5, price_atr_ratio_1h (移除 bb_position)
         features["price_change_3"] = df.iloc[t_idx]["price_change_3"]
         features["price_change_5"] = df.iloc[t_idx]["price_change_5"]
         features["price_atr_ratio_1h"] = df.iloc[t_idx]["price_atr_ratio_1h"]
-        features["bb_position"] = df.iloc[t_idx]["bb_position"]
 
         # 添加標籤和時間戳
         features["label"] = label

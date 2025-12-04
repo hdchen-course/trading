@@ -21,6 +21,7 @@ from detection.macd_v1 import MACDV1Detector
 from detection.ml_reversal_v3 import MLReversalV3Detector
 from detection.ml_reversal_v4 import MLReversalV4Detector
 from detection.ml_reversal_v5 import MLReversalV5Detector
+from detection.ml_reversal_v6 import MLReversalV6Detector
 from utils.indicators import analyze_cumulative_metrics, calculate_technical_indicators
 
 warnings.filterwarnings("ignore")
@@ -635,6 +636,7 @@ def run_visualization(start_date_str, end_date_str, methods=None, output_file=No
         "mlv3": MLReversalV3Detector(prob_threshold=0.5),
         "mlv4": MLReversalV4Detector(),
         "mlv5": MLReversalV5Detector(),
+        "mlv6": MLReversalV6Detector(),
     }
 
     # 使用默認方法如果沒有指定 - 默認使用全部方法
