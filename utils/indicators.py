@@ -180,6 +180,10 @@ def calculate_technical_indicators(df, fixed_window=1000):
     )
     df["price_above_sar"] = df["close"] > df["sar"]
 
+    # 計算價格到 SAR 的距離百分比
+    # 正值表示價格在 SAR 上方，負值表示價格在 SAR 下方
+    df["sar_distance_pct"] = (df["close"] - df["sar"]) / df["close"] * 100
+
     # 成交量變化率
     df["volume_change"] = df["volume"].pct_change()
 
@@ -289,6 +293,7 @@ def analyze_cumulative_metrics(df, window_size=16):
     atr_series = pd.Series(
         df["atr"].rolling(window=window_size, min_periods=1).mean().values
     )
+    sar_distance_series = pd.Series(df["sar_distance_pct"].values)
 
     # 計算原始二階導數
     macd_2nd_raw = calculate_second_derivative(macd_series)
@@ -297,6 +302,7 @@ def analyze_cumulative_metrics(df, window_size=16):
     atr_2nd_raw = calculate_second_derivative(atr_series)
     lis_2nd_raw = calculate_second_derivative(lis_series)
     lds_2nd_raw = calculate_second_derivative(lds_series)
+    sar_distance_2nd_raw = calculate_second_derivative(sar_distance_series)
 
     # 儲存原始 LIS/LDS 值
     results["lis"] = lis_series.values
@@ -309,6 +315,9 @@ def analyze_cumulative_metrics(df, window_size=16):
     results["atr_2nd"] = calculate_z_score(atr_2nd_raw, window=200).values
     results["lis_2nd"] = calculate_z_score(lis_2nd_raw, window=200).values
     results["lds_2nd"] = calculate_z_score(lds_2nd_raw, window=200).values
+    results["sar_distance_2nd"] = calculate_z_score(
+        sar_distance_2nd_raw, window=200
+    ).values
 
     # 把原始df中所有欄位複製到results中（除了timestamp和已存在的欄位）
     # 改進：不再 slice，保持完整長度
