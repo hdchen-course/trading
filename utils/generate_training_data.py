@@ -10,6 +10,7 @@
 
 import sys
 import os
+import argparse
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -208,7 +209,7 @@ def visualize_reversal_points(df, output_filename="reversal_points_visualization
     df["datetime"] = pd.to_datetime(df["timestamp"])
 
     # 找出反轉點
-    reversal_points = df[df["reverse"]]
+    reversal_points = df[df["reverse"] == 1]
 
     print(f"\n繪製圖表...")
     print(f"   總數據點: {len(df)}")
@@ -243,7 +244,7 @@ def visualize_reversal_points(df, output_filename="reversal_points_visualization
     # === 圖2: 最近3個月 ===
     ax2 = axes[1]
     recent_3m = df[df["datetime"] >= df["datetime"].max() - pd.Timedelta(days=90)]
-    recent_3m_reversals = recent_3m[recent_3m["reverse"]]
+    recent_3m_reversals = recent_3m[recent_3m["reverse"] == 1]
 
     ax2.plot(
         recent_3m["datetime"],
@@ -276,7 +277,7 @@ def visualize_reversal_points(df, output_filename="reversal_points_visualization
     # === 圖3: 最近1個月 ===
     ax3 = axes[2]
     recent_1m = df[df["datetime"] >= df["datetime"].max() - pd.Timedelta(days=30)]
-    recent_1m_reversals = recent_1m[recent_1m["reverse"]]
+    recent_1m_reversals = recent_1m[recent_1m["reverse"] == 1]
 
     ax3.plot(
         recent_1m["datetime"],
@@ -405,10 +406,10 @@ def verify_data_alignment(original_df, result_df):
 
         # 檢查前5個反轉點是否對齊
         result_reversal_times = (
-            result_df[result_df["reverse"]]["timestamp"].head(5).tolist()
+            result_df[result_df["reverse"] == 1]["timestamp"].head(5).tolist()
         )
         original_reversal_times = (
-            original_df[original_df["reverse"]]["timestamp"].head(10).tolist()
+            original_df[original_df["reverse"] == 1]["timestamp"].head(10).tolist()
         )
 
         print(f"\n前5個反轉點時間戳對齊檢查:")
@@ -508,8 +509,6 @@ def main(start_date=None, end_date=None, interval="15m", window_size=16):
 
 
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser(description="生成反轉檢測訓練數據")
     parser.add_argument(
         "--start",
