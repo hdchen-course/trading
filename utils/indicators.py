@@ -206,6 +206,34 @@ def calculate_technical_indicators(df, fixed_window=1000):
     return df
 
 
+def calculate_linear_regression_slope(data, window=5):
+    """
+    計算線性回歸斜率（使用滾動窗口）
+
+    Args:
+        data: 價格序列（numpy array）
+        window: 窗口大小
+
+    Returns:
+        斜率序列（numpy array）
+    """
+    slopes = np.full(len(data), np.nan)
+
+    for i in range(window - 1, len(data)):
+        y = data[i - window + 1 : i + 1]
+        x = np.arange(window)
+        # 線性回歸: y = slope * x + intercept
+        slope = np.polyfit(x, y, 1)[0]
+        slopes[i] = slope
+
+    return slopes
+
+
+def calculate_first_derivative(series):
+    """計算序列的一階導數（變化率）"""
+    return series.diff()
+
+
 def calculate_second_derivative(series):
     """計算序列的二階導數 (加速度)"""
     first_derivative = series.diff()
@@ -289,6 +317,22 @@ def analyze_cumulative_metrics(df, window_size=16):
 
     lis_series = pd.Series(lis_values)
     lds_series = pd.Series(lds_values)
+
+    # 計算價格斜率（線性回歸斜率）
+    price_slope_raw = calculate_linear_regression_slope(df["close"].values, window=16)
+    price_slope_series = pd.Series(price_slope_raw)
+
+    # 計算斜率的一階導數（斜率變化率）並標準化為 z-score
+    price_slope_1st_raw = calculate_first_derivative(price_slope_series)
+    results["price_slope_1st"] = calculate_z_score(
+        price_slope_1st_raw, window=200
+    ).values
+
+    # 計算斜率的二階導數（斜率加速度）並標準化為 z-score
+    price_slope_2nd_raw = calculate_second_derivative(price_slope_series)
+    results["price_slope_2nd"] = calculate_z_score(
+        price_slope_2nd_raw, window=200
+    ).values
 
     # 計算二階導數 (加速度) 並標準化為z-score
     macd_series = pd.Series(results["avg_macd"])
