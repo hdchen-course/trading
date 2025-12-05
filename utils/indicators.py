@@ -167,6 +167,10 @@ def calculate_technical_indicators(df, fixed_window=1000):
     df["macd_histogram"] = macd_hist_values
     df["ema_50"] = ema_50_values
     df["ema_100"] = ema_100_values
+
+    # Close price 相對於 EMA 的漲跌幅
+    df["close_ema50_pct"] = (df["close"] - df["ema_50"]) / df["ema_50"] * 100
+    df["close_ema100_pct"] = (df["close"] - df["ema_100"]) / df["ema_100"] * 100
     df["rsi"] = rsi_values
     df["stochrsi_k"] = stochrsi_k_values
     df["stochrsi_d"] = stochrsi_d_values
@@ -175,10 +179,14 @@ def calculate_technical_indicators(df, fixed_window=1000):
     df["bb_upper"] = bb_upper_values
     df["bb_middle"] = bb_middle_values
     df["bb_lower"] = bb_lower_values
+
+    # 布林通道衍生指標
     df["bb_position"] = (df["close"] - df["bb_lower"]) / (
         df["bb_upper"] - df["bb_lower"]
-    )
-    df["price_above_sar"] = df["close"] > df["sar"]
+    )  # %B: 價格在通道中的相對位置 (0-1)
+    df["bb_width_pct"] = (
+        (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"] * 100
+    )  # 布林寬百分比：波動性指標
 
     # 計算價格到 SAR 的距離百分比
     # 正值表示價格在 SAR 上方，負值表示價格在 SAR 下方
@@ -241,10 +249,6 @@ def analyze_cumulative_metrics(df, window_size=16):
         .values,
         "avg_macd": df["macd"].rolling(window=window_size, min_periods=1).mean().values,
         "avg_rsi": df["rsi"].rolling(window=window_size, min_periods=1).mean().values,
-        "price_above_sar_ratio": df["price_above_sar"]
-        .rolling(window=window_size, min_periods=1)
-        .mean()
-        .values,
         "avg_bb_position": df["bb_position"]
         .rolling(window=window_size, min_periods=1)
         .mean()
