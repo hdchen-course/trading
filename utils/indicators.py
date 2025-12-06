@@ -203,6 +203,15 @@ def calculate_technical_indicators(df, fixed_window=1000):
     df["price_change_3"] = df["close"].pct_change(3)
     df["price_change_5"] = df["close"].pct_change(5)
 
+    # 計算 VPVR 指標（如果有 volume 欄位）- 多時間週期
+    if "volume" in df.columns:
+        # 4 小時 = 16 根 15 分鐘 K 線
+        df = calculate_vpvr_indicators(df, window=16, bins=50, suffix="_4h")
+        # 24 小時 = 96 根 15 分鐘 K 線
+        df = calculate_vpvr_indicators(df, window=96, bins=50, suffix="_24h")
+        # 72 小時 = 288 根 15 分鐘 K 線
+        df = calculate_vpvr_indicators(df, window=288, bins=50, suffix="_72h")
+
     return df
 
 
@@ -553,5 +562,159 @@ def add_subsequence_indicators(
     # 計算趨勢指標：LIS - LDS
     # 正值表示上漲趨勢主導，負值表示下跌趨勢主導
     df["trend_indicator"] = df["lis_length"] - df["lds_length"]
+
+    return df
+
+
+def calculate_vpvr_indicators(
+    df: pd.DataFrame, window: int = 1000, bins: int = 50, suffix: str = ""
+) -> pd.DataFrame:
+    """
+    計算滾動 VPVR (Volume Profile Visible Range) 指標
+
+    對每個時間點，計算過去 window 根 K 線的 VPVR，並提取關鍵特徵：
+    - POC (Point of Control): 成交量最大的價格
+    - Value Area High/Low: 70% 成交量的價格範圍
+    - 當前價格相對於 POC/VA 的位置
+    - 當前價格的成交量密度
+
+    Args:
+        df: DataFrame，必須包含 'close' 和 'volume' 欄位
+        window: 滾動窗口大小（默認 1000 根 K 線）
+        bins: 價格區間數量（默認 50）
+        suffix: 欄位名稱後綴（例如 "_4h", "_24h"）
+
+    Returns:
+        df: 添加了 VPVR 相關特徵的 DataFrame
+
+    新增欄位：
+        - vpvr_poc{suffix}: POC 價格
+        - vpvr_vah{suffix}: Value Area High
+        - vpvr_val{suffix}: Value Area Low
+        - vpvr_distance_to_poc_pct{suffix}: 當前價格距離 POC 的百分比
+        - vpvr_in_value_area{suffix}: 是否在 Value Area 內 (0/1)
+        - vpvr_distance_to_vah_pct{suffix}: 距離 VAH 的百分比
+        - vpvr_distance_to_val_pct{suffix}: 距離 VAL 的百分比
+        - vpvr_volume_density{suffix}: 當前價格區間的成交量密度
+    """
+    if "volume" not in df.columns:
+        raise ValueError("DataFrame 必須包含 'volume' 欄位")
+
+    n = len(df)
+
+    # 初始化結果數組
+    vpvr_poc = np.full(n, np.nan)
+    vpvr_vah = np.full(n, np.nan)
+    vpvr_val = np.full(n, np.nan)
+    vpvr_distance_to_poc_pct = np.full(n, np.nan)
+    vpvr_in_value_area = np.full(n, 0)
+    vpvr_distance_to_vah_pct = np.full(n, np.nan)
+    vpvr_distance_to_val_pct = np.full(n, np.nan)
+    vpvr_volume_density = np.full(n, np.nan)
+
+    prices = df["close"].values
+    volumes = df["volume"].values
+
+    # 從 window 開始計算（需要足夠的歷史數據）
+    for i in range(window, n):
+        # 提取窗口內的數據
+        window_prices = prices[i - window : i]
+        window_volumes = volumes[i - window : i]
+
+        # 計算價格範圍
+        price_min = window_prices.min()
+        price_max = window_prices.max()
+
+        if price_min == price_max:
+            # 價格沒有變化，跳過
+            continue
+
+        # 創建價格區間
+        bin_edges = np.linspace(price_min, price_max, bins + 1)
+
+        # 計算每個區間的成交量
+        volume_profile = np.zeros(bins)
+
+        for j in range(len(window_prices)):
+            price = window_prices[j]
+            volume = window_volumes[j]
+
+            # 找出價格所屬的區間
+            bin_idx = np.searchsorted(bin_edges[1:], price)
+            if bin_idx >= bins:
+                bin_idx = bins - 1
+
+            volume_profile[bin_idx] += volume
+
+        # 計算 POC (Point of Control)
+        poc_idx = np.argmax(volume_profile)
+        poc_price = (bin_edges[poc_idx] + bin_edges[poc_idx + 1]) / 2
+        vpvr_poc[i] = poc_price
+
+        # 計算 Value Area (70% 成交量)
+        total_volume = volume_profile.sum()
+        target_volume = total_volume * 0.70
+        accumulated_volume = volume_profile[poc_idx]
+
+        va_low_idx = poc_idx
+        va_high_idx = poc_idx
+
+        # 從 POC 向兩邊擴展
+        while accumulated_volume < target_volume:
+            left_volume = volume_profile[va_low_idx - 1] if va_low_idx > 0 else 0
+            right_volume = (
+                volume_profile[va_high_idx + 1] if va_high_idx < bins - 1 else 0
+            )
+
+            if left_volume > right_volume and va_low_idx > 0:
+                va_low_idx -= 1
+                accumulated_volume += left_volume
+            elif va_high_idx < bins - 1:
+                va_high_idx += 1
+                accumulated_volume += right_volume
+            else:
+                break
+
+        va_low_price = bin_edges[va_low_idx]
+        va_high_price = bin_edges[va_high_idx + 1]
+
+        vpvr_vah[i] = va_high_price
+        vpvr_val[i] = va_low_price
+
+        # 當前價格
+        current_price = prices[i]
+
+        # 計算距離 POC 的百分比
+        vpvr_distance_to_poc_pct[i] = (current_price - poc_price) / current_price * 100
+
+        # 是否在 Value Area 內
+        vpvr_in_value_area[i] = (
+            1 if va_low_price <= current_price <= va_high_price else 0
+        )
+
+        # 距離 VAH/VAL 的百分比
+        vpvr_distance_to_vah_pct[i] = (
+            (va_high_price - current_price) / current_price * 100
+        )
+        vpvr_distance_to_val_pct[i] = (
+            (current_price - va_low_price) / current_price * 100
+        )
+
+        # 當前價格的成交量密度
+        current_bin_idx = np.searchsorted(bin_edges[1:], current_price)
+        if current_bin_idx >= bins:
+            current_bin_idx = bins - 1
+
+        vpvr_volume_density[i] = volume_profile[current_bin_idx] / total_volume * 100
+
+    # 添加到 DataFrame（使用 suffix）
+    df[f"vpvr_poc{suffix}"] = vpvr_poc
+    df[f"vpvr_vah{suffix}"] = vpvr_vah
+    df[f"vpvr_val{suffix}"] = vpvr_val
+    df[f"vpvr_distance_to_poc_pct{suffix}"] = vpvr_distance_to_poc_pct
+    df[f"vpvr_in_value_area{suffix}"] = vpvr_in_value_area
+    df[f"vpvr_distance_to_vah_pct{suffix}"] = vpvr_distance_to_vah_pct
+    df[f"vpvr_distance_to_val_pct{suffix}"] = vpvr_distance_to_val_pct
+    df[f"vpvr_volume_density{suffix}"] = vpvr_volume_density
 
     return df

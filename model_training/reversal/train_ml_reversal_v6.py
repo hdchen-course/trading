@@ -656,22 +656,33 @@ def train_and_validate(features_df: pd.DataFrame, output_dir: str = "models/reve
         col for col in features_df.columns if col not in ["label", "timestamp"]
     ]
 
-    # 使用 Top 10 重要特徵
-    top_10_features = [
+    # 使用 Top 20 重要特徵（最佳性能，不含 VPVR）
+    top_20_features = [
         "sar_distance_pct_change_t_minus_1_to_t",
-        "avg_amplitude_t",
         "sar_distance_pct_change_t_to_entry",
+        "avg_amplitude_t",
         "avg_amplitude_entry",
         "volatility_t",
         "macd_histogram_change_t_to_entry",
+        "amplitude_t",
         "macd_2nd_change_t_minus_1_to_t",
         "volatility_entry",
-        "amplitude_t",
         "volume_change_t",
+        "avg_volume_entry",
+        "avg_volume_t",
+        "atr_2nd_t",
+        "price_2nd_entry",
+        "price_change_5_t",
+        "price_change_5_entry",
+        "volume_ratio_t",
+        "vol_2nd_change_t_to_entry",
+        "price_2nd_t",
+        "amplitude_entry",
     ]
 
-    print(f"\n🎯 使用 Top 10 重要特徵")
-    feature_cols = top_10_features
+    print(f"\n🎯 使用 Top 20 重要特徵（最佳性能配置）")
+    print(f"   VPVR 特徵: 已評估但未選入（重要性 < 1%）")
+    feature_cols = top_20_features
     X = features_df[feature_cols]
     y = features_df["label"]
 

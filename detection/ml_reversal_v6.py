@@ -12,17 +12,22 @@ ML Reversal V6 Detection
 - 負樣本：虧損超過 0.18% 且通過嚴格過濾條件
 - 樣本平衡：1:1
 
-Top 10 重要特徵（從 49 個中選出）：
-1. sar_distance_pct_change_t_minus_1_to_t
-2. avg_amplitude_t
-3. sar_distance_pct_change_t_to_entry
-4. avg_amplitude_entry
-5. volatility_t
+Top 20 重要特徵（從 65 個中選出，不含 VPVR）：
+1. sar_distance_pct_change_t_minus_1_to_t (27.51%)
+2. sar_distance_pct_change_t_to_entry (14.16%)
+3. avg_amplitude_t (12.11%)
+4. avg_amplitude_entry (9.38%)
+5. volatility_t (8.87%)
 6. macd_histogram_change_t_to_entry
-7. macd_2nd_change_t_minus_1_to_t
-8. volatility_entry
-9. amplitude_t
+7. amplitude_t
+8. macd_2nd_change_t_minus_1_to_t
+9. volatility_entry
 10. volume_change_t
+11-20. avg_volume_entry, avg_volume_t, atr_2nd_t, price_2nd_entry, 
+       price_change_5_t, price_change_5_entry, volume_ratio_t, 
+       vol_2nd_change_t_to_entry, price_2nd_t, amplitude_entry
+
+注：VPVR 特徵已評估但重要性 < 1%，未選入
 
 檢測過濾條件（在 ML 預測前）：
 通用條件：
@@ -41,10 +46,10 @@ Valley（做多）：
 
 模型：
 - 算法: RandomForest
-- 特徵數: 10
-- 測試準確率: 79.55%
-- ROC AUC: 0.8784
-- 正樣本召回率: 78%
+- 特徵數: 20
+- 測試準確率: 80.11%
+- ROC AUC: 0.8751
+- 樣本數: 880 (440 正 + 440 負)
 
 回測結果（350天，2024-12-19 至 2025-12-04）：
 - 交易次數: 95 次
@@ -119,7 +124,7 @@ class MLReversalV6Detector(DetectionMethod):
             entry_idx: [entry] 入場點的索引
 
         Returns:
-            特徵字典（Top 10 重要特徵）
+            特徵字典（Top 20 重要特徵）
         """
         # 確保索引有效
         if t_idx < 1 or entry_idx >= len(df):
@@ -169,15 +174,35 @@ class MLReversalV6Detector(DetectionMethod):
             else:
                 features["macd_2nd_change_t_minus_1_to_t"] = 0.0
 
-            # 4. 原始值特徵 [t] (Top 10 中的 [t] 特徵)
+            # 4. vol_2nd 變化率
+            vol_2nd_t = df.iloc[t_idx]["vol_2nd"]
+            vol_2nd_entry = df.iloc[entry_idx]["vol_2nd"]
+
+            if abs(vol_2nd_t) > 1e-10:
+                features["vol_2nd_change_t_to_entry"] = abs(
+                    vol_2nd_entry - vol_2nd_t
+                ) / abs(vol_2nd_t)
+            else:
+                features["vol_2nd_change_t_to_entry"] = 0.0
+
+            # 5. 原始值特徵 [t] (Top 20 中的 [t] 特徵)
             features["avg_amplitude_t"] = df.iloc[t_idx]["avg_amplitude"]
             features["volatility_t"] = df.iloc[t_idx]["volatility"]
             features["amplitude_t"] = df.iloc[t_idx]["amplitude"]
             features["volume_change_t"] = df.iloc[t_idx]["volume_change"]
+            features["avg_volume_t"] = df.iloc[t_idx]["avg_volume"]
+            features["atr_2nd_t"] = df.iloc[t_idx]["atr_2nd"]
+            features["price_change_5_t"] = df.iloc[t_idx]["price_change_5"]
+            features["volume_ratio_t"] = df.iloc[t_idx]["volume_ratio"]
+            features["price_2nd_t"] = df.iloc[t_idx]["price_2nd"]
 
-            # 5. 原始值特徵 [entry] (Top 10 中的 [entry] 特徵)
+            # 6. 原始值特徵 [entry] (Top 20 中的 [entry] 特徵)
             features["avg_amplitude_entry"] = df.iloc[entry_idx]["avg_amplitude"]
             features["volatility_entry"] = df.iloc[entry_idx]["volatility"]
+            features["avg_volume_entry"] = df.iloc[entry_idx]["avg_volume"]
+            features["price_2nd_entry"] = df.iloc[entry_idx]["price_2nd"]
+            features["price_change_5_entry"] = df.iloc[entry_idx]["price_change_5"]
+            features["amplitude_entry"] = df.iloc[entry_idx]["amplitude"]
 
             # 檢查是否有 NaN
             for key, value in features.items():
