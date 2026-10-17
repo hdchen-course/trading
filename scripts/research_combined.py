@@ -27,9 +27,10 @@ from engine.fetch_binance import load_or_fetch  # noqa: E402
 from engine.fetch_equity import load_or_fetch_daily  # noqa: E402
 from signals.library import donchian_breakout, ema_cross, ema_ribbon_trend  # noqa: E402
 
-CRYPTO = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
-          "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT"]
-EQUITY = ["SOXL", "TQQQ", "SOXX", "KORU", "MSTR", "INTC", "NVDA", "SPXL", "TNA", "LABU"]
+# 使用者只接受的加密標的:BTC 與 AAVE(其餘山寨相關性高又弱,加了反而降 Sharpe)
+CRYPTO = ["BTCUSDT", "AAVEUSDT"]
+EQUITY = ["SOXL", "TQQQ", "SOXX", "KORU", "MSTR", "INTC", "NVDA", "SPXL", "TNA", "LABU",
+          "FAS", "ERX", "NUGT", "YINN", "UDOW", "UPRO", "RETL", "DRN", "DFEN", "CURE", "DUST"]
 
 CRYPTO_SIGS = [
     ("4h", lambda d: ema_cross(d, 50, 200)),
@@ -106,7 +107,10 @@ def main():
     print("建構跨資產組合(加密永續 + 美股槓桿ETF/個股)...")
     legs = collect_legs()
     mat = pd.concat(legs, axis=1)
-    port = mat.mean(axis=1, skipna=True)  # 每天只在有資料的 leg 間等權
+    mat.columns = range(mat.shape[1])  # 避免重複欄名
+    # 等權:每天只在「當時有資料」的 leg 間平均。(風險平價在這種多數為0的事件型
+    # 報酬流上會退化——長期無交易的腿波動趨近0使權重爆掉,故不採用。)
+    port = mat.mean(axis=1, skipna=True)
     n = len(port)
     split = int(n * 0.7)
     print(f"共 {len(legs)} 條 leg\n")
