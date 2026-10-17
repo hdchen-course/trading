@@ -46,10 +46,17 @@ def format_signal_events(events: List[dict]) -> str:
     lines = ["📡 <b>順勢訊號觸發</b>"]
     for e in events:
         arrow = "🟢 做多" if e["direction"] == "LONG" else "🔴 做空"
+        size_line = ""
+        if e.get("notional_pct_of_equity") is not None:
+            size_line = (
+                f"\n　建議部位:名目約權益 {e['notional_pct_of_equity']:.0%}"
+                f"(停損被打到最多賠 {e.get('risk_pct', 0):.0%})"
+            )
         lines.append(
             f"\n{arrow} <b>{e['coin']}</b> ({e['signal_name']} {e['timeframe']})\n"
             f"　價格 {e['price']:.4f}\n"
-            f"　建議初始停損 {e['init_stop']:.4f}\n"
+            f"　建議初始停損 {e['init_stop']:.4f}"
+            f"{size_line}\n"
             f"　出場:{e['trailing_hint']}"
         )
     return "".join(lines)

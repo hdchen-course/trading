@@ -58,6 +58,7 @@ class TrendPortfolio:
     stop_loss_pct: float = 0.06
     atr_period: int = 14
     trailing_atr_mult: float = 4.0
+    risk_per_trade: float = 0.02  # 穩健檔:每筆最多賠權益 2%
 
     def current_signals(self, data_by_coin: Dict[str, pd.DataFrame]) -> List[dict]:
         """回傳「這一根新出現」的可執行訊號事件清單。
@@ -84,6 +85,8 @@ class TrendPortfolio:
                     if now > 0
                     else price * (1 + self.stop_loss_pct)
                 )
+                # 建議名目部位(佔權益比例)= 每筆風險 ÷ 停損距離,使停損被打到時恰賠 risk_per_trade
+                notional_pct = round(self.risk_per_trade / self.stop_loss_pct, 2)
                 events.append(
                     {
                         "coin": leg.coin,
@@ -94,6 +97,8 @@ class TrendPortfolio:
                         "time": d["timestamp"].iloc[-1],
                         "init_stop": round(init_stop, 6),
                         "atr": round(atr_now, 6),
+                        "risk_pct": self.risk_per_trade,
+                        "notional_pct_of_equity": notional_pct,
                         "trailing_hint": f"{self.trailing_atr_mult}×ATR 移動停損",
                     }
                 )
