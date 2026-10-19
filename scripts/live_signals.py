@@ -22,8 +22,8 @@ from engine.fetch_binance import load_or_fetch  # noqa: E402
 from engine.strategy import TrendPortfolio, default_legs, equity_legs  # noqa: E402
 
 CRYPTO = ["BTCUSDT", "AAVEUSDT"]
-EQUITIES = ["SOXL", "TQQQ", "SOXX", "KORU", "MSTR", "INTC", "NVDA", "SPXL",
-            "TNA", "LABU", "FAS", "ERX", "NUGT", "YINN", "UDOW", "UPRO"]
+# 槓桿 ETF 已移除(趨勢 sleeve 樣本外無 edge,每日重置衰減);保留非槓桿股+SOXX。見 run_live 註解。
+EQUITIES = ["SOXX", "MSTR", "INTC", "NVDA"]
 _STATE = {1: "做多", -1: "做空", 0: "觀望"}
 
 

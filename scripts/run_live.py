@@ -24,10 +24,12 @@ from engine.ledger import log_signals  # noqa: E402
 from engine.notify import format_signal_events, send_telegram, telegram_configured  # noqa: E402
 from engine.strategy import TrendPortfolio, default_legs, equity_legs  # noqa: E402
 
-# 實際交易宇宙:加密只 BTC/AAVE(24h,幣安 1h);美股/ETF(日線)
+# 實際交易宇宙:加密只 BTC/AAVE(24h,幣安 1h);美股(日線)。
+# 槓桿 ETF(SOXL/TQQQ/SPXL... 每日重置)已從「日線順勢」宇宙移除:研究證實其趨勢 sleeve
+# 樣本外無 edge(跨所有距離 gate 門檻皆 OOS 負,每日重置衰減+假突破洗掉),移除後組合近4年
+# Sharpe 0.60→0.89、OOS +4.3%→+6.5%。保留非槓桿:1x 類股 ETF(SOXX)+ 個股(MSTR/INTC/NVDA)。
 CRYPTO = ["BTCUSDT", "AAVEUSDT"]
-EQUITIES = ["SOXL", "TQQQ", "SOXX", "KORU", "MSTR", "INTC", "NVDA", "SPXL",
-            "TNA", "LABU", "FAS", "ERX", "NUGT", "YINN", "UDOW", "UPRO"]
+EQUITIES = ["SOXX", "MSTR", "INTC", "NVDA"]
 
 
 def main() -> None:

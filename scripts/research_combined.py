@@ -49,8 +49,10 @@ def _gate(d, raw_sig):
 
 # 使用者只接受的加密標的:BTC 與 AAVE(其餘山寨相關性高又弱,加了反而降 Sharpe)
 CRYPTO = ["BTCUSDT", "AAVEUSDT"]
-EQUITY = ["SOXL", "TQQQ", "SOXX", "KORU", "MSTR", "INTC", "NVDA", "SPXL", "TNA", "LABU",
-          "FAS", "ERX", "NUGT", "YINN", "UDOW", "UPRO", "RETL", "DRN", "DFEN", "CURE", "DUST"]
+# 美股:只留非槓桿(1x 類股 ETF + 個股)。每日重置的槓桿 ETF(SOXL/TQQQ/SPXL/TNA/...)
+# 已移除——研究證實其日線順勢 sleeve 樣本外無 edge(跨所有距離 gate 皆 OOS 負,衰減+假突破),
+# 移除後組合近4年 Sharpe 0.60→0.89、OOS 年化 +4.3%→+6.5%(同回撤)。
+EQUITY = ["SOXX", "MSTR", "INTC", "NVDA"]
 
 CRYPTO_SIGS = [
     ("4h", lambda d: ema_cross(d, 50, 200)),
@@ -124,7 +126,7 @@ def collect_legs():
 
 
 def main():
-    print("建構跨資產組合(加密永續 + 美股槓桿ETF/個股)...")
+    print("建構跨資產組合(加密永續 BTC/AAVE + 美股非槓桿 SOXX/MSTR/INTC/NVDA)...")
     legs = collect_legs()
     mat = pd.concat(legs, axis=1)
     mat.columns = range(mat.shape[1])  # 避免重複欄名
