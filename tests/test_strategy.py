@@ -88,6 +88,40 @@ def test_default_and_equity_legs_shapes():
     assert {leg.coin for leg in e} == {"SOXL", "TQQQ"}
 
 
+def _const_portfolio(state, n_tail, max_hold):
+    """造一條『末 n_tail 根都是 state』的腿,關 gate,設 max_hold。"""
+    def fn(d):
+        s = pd.Series(0, index=d.index, dtype=int)
+        s.iloc[-n_tail:] = state
+        return s
+    leg = Leg(coin="BTCUSDT", timeframe="1h", name="t", signal_fn=fn)
+    return TrendPortfolio(legs=[leg], regime_ema=None, dist_gate_atr=None,
+                          max_hold_bars=max_hold)
+
+
+def test_current_exits_fires_when_held_exceeds_max_hold():
+    """持倉同向根數 ≥ max_hold → 發時間平倉提醒。"""
+    p = _const_portfolio(state=1, n_tail=30, max_hold=10)
+    ex = p.current_exits({"BTCUSDT": _raw()})
+    assert len(ex) == 1
+    assert ex[0]["action"] == "TIME_EXIT"
+    assert ex[0]["direction"] == "LONG"
+    assert ex[0]["held_bars"] >= 10
+
+
+def test_current_exits_silent_when_held_below_max_hold():
+    """持倉未滿 max_hold → 不發。"""
+    p = _const_portfolio(state=1, n_tail=4, max_hold=10)
+    assert p.current_exits({"BTCUSDT": _raw()}) == []
+
+
+def test_current_exits_none_when_flat_or_disabled():
+    p_flat = _const_portfolio(state=0, n_tail=30, max_hold=10)
+    assert p_flat.current_exits({"BTCUSDT": _raw()}) == []
+    p_off = _const_portfolio(state=1, n_tail=30, max_hold=None)
+    assert p_off.current_exits({"BTCUSDT": _raw()}) == []
+
+
 def test_regime_filter_blocks_countertrend_short_in_uptrend():
     """預設 regime 濾網開啟:上升盤中的新空單應被濾掉(不產生事件)。"""
     def fn(d):

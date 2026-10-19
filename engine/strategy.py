@@ -12,7 +12,7 @@ current_signals() 只回報「這一根新出現」的訊號(由 0 或反向翻�
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -77,6 +77,7 @@ class TrendPortfolio:
     risk_per_trade: float = 0.02  # 穩健檔:每筆最多賠權益 2%
     regime_ema: Optional[int] = 200  # 市場狀態濾網:只在 close 站上/跌破 EMA200 時順勢進場(None=關閉)
     dist_gate_atr: Optional[float] = 1.0  # 趨勢強度 gate:|close-EMA200|/ATR 須 ≥ 此值才進場(None=關閉)
+    max_hold_bars: Optional[int] = 80  # 時間停損:持倉滿此根數(該腿週期)建議平倉(回測驗證的 edge,None=關閉)
 
     def _gated_signal(self, leg: Leg, raw: pd.DataFrame):
         """對單一腿算出「套完 regime + 距離 gate」的訊號序列。回傳 (d, sig) 或 None。
@@ -112,6 +113,53 @@ class TrendPortfolio:
                 "price": float(d["close"].iloc[-1]),
             })
         return states
+
+    @staticmethod
+    def _bars_in_state(sig: pd.Series) -> int:
+        """當前(末根)非零狀態已持續幾根(尾端同號連續數)。末根為 0 回傳 0。"""
+        vals = sig.to_numpy()
+        last = vals[-1]
+        if last == 0:
+            return 0
+        n = 0
+        for v in vals[::-1]:
+            if v == last:
+                n += 1
+            else:
+                break
+        return n
+
+    def current_exits(self, data_by_coin: Dict[str, pd.DataFrame]) -> List[dict]:
+        """回傳「持倉已滿 max_hold_bars 根、建議時間平倉」的腿(落地回測的時間停損 edge)。
+
+        以訊號序列尾端同向連續根數當持倉年齡(無狀態、無前視)。到期發平倉提醒;若趨勢續行,
+        下一次新翻轉會再由 current_signals 給進場訊號(與回測 max_hold 的「到期換倉」一致)。
+        """
+        if self.max_hold_bars is None:
+            return []
+        exits: List[dict] = []
+        for leg in self.legs:
+            res = self._gated_signal(leg, data_by_coin.get(leg.coin))
+            if res is None:
+                continue
+            d, sig = res
+            state = int(sig.iloc[-1])
+            if state == 0:
+                continue
+            held = self._bars_in_state(sig)
+            if held >= self.max_hold_bars:
+                exits.append({
+                    "coin": leg.coin, "timeframe": leg.timeframe,
+                    "signal_name": leg.name,
+                    "direction": "LONG" if state > 0 else "SHORT",
+                    "action": "TIME_EXIT",
+                    "held_bars": held,
+                    "price": float(d["close"].iloc[-1]),
+                    "time": d["timestamp"].iloc[-1],
+                    "note": f"持倉已滿 {held} 根({leg.timeframe})≥{self.max_hold_bars},"
+                            f"建議平倉;趨勢若續行待新訊號再進",
+                })
+        return exits
 
     def current_signals(self, data_by_coin: Dict[str, pd.DataFrame]) -> List[dict]:
         """回傳「這一根新出現」的可執行訊號事件清單。

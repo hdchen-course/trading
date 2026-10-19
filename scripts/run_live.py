@@ -59,22 +59,39 @@ def main() -> None:
 
     port = TrendPortfolio(legs=legs)
     events = port.current_signals(data)
-
-    if not events:
-        print("目前沒有新觸發的訊號(低頻特性,多數時間如此)。")
-        return
+    exits = port.current_exits(data)  # 時間停損:持倉滿 max_hold_bars 建議平倉(已驗證 edge)
 
     for e in events:
         print(
             f"🔔 {e['coin']} {e['direction']} | {e['signal_name']}({e['timeframe']}) | "
             f"價 {e['price']:.4f} | 初始停損 {e['init_stop']:.4f}"
         )
+    for x in exits:
+        print(
+            f"⏳ 平倉 {x['coin']} {x['direction']} | {x['signal_name']}({x['timeframe']}) | "
+            f"價 {x['price']:.4f} | 持倉 {x['held_bars']} 根(時間停損)"
+        )
 
-    # 落地到紙上交易帳本(冪等),供日後實盤 vs 回測比對
-    added = log_signals(events)
-    print(f"📒 紙上帳本新增 {added} 筆(output/paper_trades.csv)")
+    if not events and not exits:
+        print("目前沒有新觸發的進場訊號或時間平倉(低頻特性,多數時間如此)。")
+        return
 
-    msg = format_signal_events(events)
+    if events:
+        # 落地到紙上交易帳本(冪等),供日後實盤 vs 回測比對
+        added = log_signals(events)
+        print(f"📒 紙上帳本新增 {added} 筆(output/paper_trades.csv)")
+
+    # 組合推播訊息(進場 + 時間平倉)
+    parts = []
+    if events:
+        parts.append(format_signal_events(events))
+    if exits:
+        lines = ["⏳ 時間停損(持倉到期,建議平倉;趨勢續行待新訊號再進):"]
+        lines += [f"• {x['coin']} {x['direction']} {x['signal_name']}({x['timeframe']}) "
+                  f"持倉 {x['held_bars']} 根 @ {x['price']:.4f}" for x in exits]
+        parts.append("\n".join(lines))
+    msg = "\n\n".join(parts)
+
     if telegram_configured():
         ok = send_telegram(msg)
         print(f"Telegram 推播{'成功' if ok else '失敗'}。")
