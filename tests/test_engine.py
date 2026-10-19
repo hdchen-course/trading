@@ -270,6 +270,32 @@ def test_risk_based_sizing_caps_loss():
     assert t.net_return_pct == pytest.approx(-0.01)
 
 
+def test_size_scale_multiplies_entry_notional():
+    """size_scale 在進場那根(第1根)乘上名目部位 → 損益等比放大。"""
+    df = _df([(100, 100, 100, 100), (100, 110, 99, 105), (108, 108, 108, 108)])
+    signals = pd.Series([1, 0, 0])
+    # 無 scale:名目=權益*ratio*lev=10000*0.5*2=10000;停利 +4% → net +400。
+    # cap=equity*lev=20000,留出放大空間。
+    kw = dict(position_size_ratio=0.5, leverage=2.0, stop_loss_pct=None, take_profit_pct=0.04)
+    base = _bt(**kw).run(df, signals)
+    assert base.trades[0].notional == pytest.approx(10000.0)
+    assert base.trades[0].net_pnl == pytest.approx(400.0)
+    # scale=1.5(在進場根 idx=1):名目 15000(<cap 20000)、net +600
+    scaled = _bt(**kw).run(df, signals, size_scale=pd.Series([1.0, 1.5, 1.0]))
+    assert scaled.trades[0].notional == pytest.approx(15000.0)
+    assert scaled.trades[0].net_pnl == pytest.approx(600.0)
+
+
+def test_size_scale_still_capped_by_leverage():
+    """size_scale 放大後仍受 equity*leverage 硬上限。"""
+    df = _df([(100, 100, 100, 100), (100, 110, 99, 105)])
+    signals = pd.Series([1, 0])
+    # 名目基底=權益*ratio*lev=10000*1*2=20000;scale=5 → 100000,但上限=equity*lev=20000
+    bt = _bt(position_size_ratio=1.0, leverage=2.0, stop_loss_pct=None, take_profit_pct=0.04)
+    res = bt.run(df, signals, size_scale=pd.Series([1.0, 5.0]))
+    assert res.trades[0].notional == pytest.approx(20000.0)
+
+
 def test_risk_based_sizing_respects_leverage_cap():
     """風險反推的名目若超過 equity*leverage,應被槓桿上限夾住。"""
     df = _df([(100, 100, 100, 100), (100, 110, 99, 105)])

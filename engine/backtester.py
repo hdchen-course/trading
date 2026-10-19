@@ -109,18 +109,36 @@ class EventBacktester:
         """單邊總成本率 = 手續費 + 滑價。"""
         return self.fee_rate + self.slippage_rate
 
-    def run(self, df: pd.DataFrame, signals: pd.Series) -> BacktestResult:
+    def run(
+        self,
+        df: pd.DataFrame,
+        signals: pd.Series,
+        size_scale: Optional[pd.Series] = None,
+    ) -> BacktestResult:
         """執行回測。
 
         參數:
             df: 需含欄位 open/high/low/close,以及(可選)timestamp。索引須為 0..n-1。
             signals: 與 df 等長、同索引的訊號序列,值 ∈ {-1, 0, +1},代表「該根收盤後」
                      產生的訊號。+1=做多、-1=做空、0=無。
+            size_scale: (可選)與 df 等長的逐根部位倍率,在「進場那根」乘上名目部位
+                     (例如波動度目標化:低波加倉、高波減倉)。須為 t 當下可得(無前視,
+                     由呼叫端負責 shift)。None 表示一律 1.0。放大後仍受 equity*leverage 上限。
 
         回傳 BacktestResult。
         """
         df = df.reset_index(drop=True)
         signals = pd.Series(list(signals), index=df.index).fillna(0).astype(int)
+        if size_scale is None:
+            scale_arr = [1.0] * len(df)
+        else:
+            scale_arr = (
+                pd.Series(list(size_scale), index=df.index)
+                .astype(float)
+                .clip(lower=0.0)
+                .fillna(0.0)
+                .tolist()
+            )
 
         times = (
             df["timestamp"] if "timestamp" in df.columns else pd.Series(df.index)
@@ -152,7 +170,7 @@ class EventBacktester:
                 if sig != 0 and i + 1 < n:
                     entry_idx = i + 1
                     entry_price = opens[entry_idx]
-                    notional = self._position_notional(equity)
+                    notional = self._position_notional(equity, scale_arr[entry_idx])
                     position = {
                         "direction": sig,
                         "entry_idx": entry_idx,
@@ -279,16 +297,18 @@ class EventBacktester:
             )
         return sl_price, tp_price
 
-    def _position_notional(self, equity: float) -> float:
+    def _position_notional(self, equity: float, scale: float = 1.0) -> float:
         """計算本筆名目部位。
 
-        若設 risk_per_trade_pct 且有初始停損距離,依「停損被打到時虧損=risk*權益」反推名目,
-        並以 equity*leverage 為上限;否則用 equity*position_size_ratio*leverage。
+        若設 risk_per_trade_pct 且有初始停損距離,依「停損被打到時虧損=risk*權益」反推名目;
+        否則用 equity*position_size_ratio*leverage。再乘上 scale(部位倍率,如波動度目標化),
+        最後一律以 equity*leverage 為硬上限(槓桿不可超過)。
         """
         if self.risk_per_trade_pct is not None and self.stop_loss_pct:
             notional = (self.risk_per_trade_pct * equity) / self.stop_loss_pct
-            return min(notional, equity * self.leverage)
-        return equity * self.position_size_ratio * self.leverage
+        else:
+            notional = equity * self.position_size_ratio * self.leverage
+        return min(notional * scale, equity * self.leverage)
 
     def _trailing_stop(self, direction, best_price, atr_value, initial_sl):
         """算出當根的動態停損價(移動停損)。
