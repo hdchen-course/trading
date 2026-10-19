@@ -74,7 +74,7 @@ class TrendPortfolio:
     legs: List[Leg]
     stop_loss_pct: float = 0.06
     atr_period: int = 14
-    trailing_atr_mult: float = 4.0
+    trailing_atr_mult: float = 6.0  # 端錨多窗驗證:6× 勝 4× 於全部窗(讓趨勢續跑、少砍早),回撤持平
     risk_per_trade: float = 0.02  # 穩健檔:每筆最多賠權益 2%
     regime_ema: Optional[int] = 200  # 市場狀態濾網:只在 close 站上/跌破 EMA200 時順勢進場(None=關閉)
     dist_gate_atr: Optional[float] = 1.0  # 趨勢強度 gate:|close-EMA200|/ATR 須 ≥ 此值才進場(None=關閉)

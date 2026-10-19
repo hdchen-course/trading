@@ -42,7 +42,7 @@ SIGNALS = [
 
 BT = dict(
     fee_rate=0.0004, slippage_rate=0.0002, take_profit_pct=None, max_hold_bars=None,
-    allow_opposite_exit=True, trailing_atr_mult=4.0, atr_period=14,
+    allow_opposite_exit=True, trailing_atr_mult=6.0, atr_period=14,
     stop_loss_pct=0.06, leverage=10.0, risk_per_trade_pct=0.02, initial_capital=10000.0,
 )
 
