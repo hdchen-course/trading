@@ -49,10 +49,14 @@ def _gate(d, raw_sig):
 
 # 使用者只接受的加密標的:BTC 與 AAVE(其餘山寨相關性高又弱,加了反而降 Sharpe)
 CRYPTO = ["BTCUSDT", "AAVEUSDT"]
-# 美股:只留非槓桿(1x 類股 ETF + 個股)。每日重置的槓桿 ETF(SOXL/TQQQ/SPXL/TNA/...)
-# 已移除——研究證實其日線順勢 sleeve 樣本外無 edge(跨所有距離 gate 皆 OOS 負,衰減+假突破),
-# 移除後組合近4年 Sharpe 0.60→0.89、OOS 年化 +4.3%→+6.5%(同回撤)。
-EQUITY = ["SOXX", "MSTR", "INTC", "NVDA"]
+# 美股:只用非槓桿(1x 指數/類股 ETF + 大型股)。每日重置的槓桿 ETF(SOXL/TQQQ/SPXL/...)
+# 已移除——其日線順勢 sleeve 樣本外無 edge(跨所有距離 gate 皆 OOS 負,衰減+假突破)。
+# 訊號跑在 1x 底層(QQQ/SPY/SOXX...),要槓桿由使用者用對應工具(TQQQ/SPXL/SOXL)執行,
+# 比直接對衰減的 3x ETF 下訊號更乾淨。擴充到流動大型名:研究證實單調分散增益且 OOS 與近4年
+# 同步改善(4檔→14檔:OOS Sharpe 0.52→0.86/年化+6.5%→+10.8%,近4年 0.89→1.49)。
+# 指數 ETF(SPY/QQQ/SMH)零存活者偏誤、各自單獨加入皆改善 OOS → 乾淨的分散證據。
+EQUITY = ["SOXX", "MSTR", "INTC", "NVDA", "SPY", "QQQ", "SMH", "AMD",
+          "GOOGL", "META", "AAPL", "AMZN", "TSLA", "MSFT"]
 
 CRYPTO_SIGS = [
     ("4h", lambda d: ema_cross(d, 50, 200)),
