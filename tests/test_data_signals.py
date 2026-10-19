@@ -15,7 +15,9 @@ from signals.library import (
     donchian_breakout,
     ema_cross,
     ema_ribbon_trend,
+    no_trend_gate,
     regime_filter,
+    trend_distance_gate,
     with_trend_filter,
 )
 
@@ -43,6 +45,8 @@ def _synthetic(n=600, seed=0):
         lambda d: ema_ribbon_trend(d, spans=(20, 40, 80)),
         lambda d: bollinger_revert(d, period=20, k=2.0),
         lambda d: regime_filter(d, donchian_breakout(d, 48), ema_span=50),
+        lambda d: trend_distance_gate(d, donchian_breakout(d, 48), ema_span=50, min_atr_mult=1.0),
+        lambda d: no_trend_gate(d, bollinger_revert(d, 20, 2.0), ema_span=50, lookback=50),
     ],
 )
 def test_signals_have_no_lookahead(fn):
@@ -112,6 +116,36 @@ def test_regime_filter_blocks_counter_trend():
     tail = slice(100, n)  # EMA 穩定落後後的區段
     assert (out[tail][entry[tail] == 1] == 1).all()   # 多單全保留
     assert (out[tail][entry[tail] == -1] == 0).all()  # 空單全被濾掉
+
+
+def test_trend_distance_gate_blocks_near_ma():
+    """距離 gate:價格貼近均線(距離<門檻)時進場被濾掉,遠離時保留。"""
+    n = 300
+    # 前段貼均線(平盤),後段遠離(急漲),檢查 gate 行為
+    close = pd.Series(np.concatenate([np.full(150, 100.0), np.linspace(100, 200, 150)]))
+    df = pd.DataFrame(
+        {"timestamp": pd.date_range("2024-01-01", periods=n, freq="15min", tz="UTC"),
+         "open": close, "high": close + 0.5, "low": close - 0.5, "close": close,
+         "volume": 1.0}
+    )
+    entry = pd.Series([1] * n)
+    out = trend_distance_gate(df, entry, ema_span=50, min_atr_mult=1.0)
+    assert out.iloc[120] == 0   # 平盤段貼均線 → 濾掉
+    assert out.iloc[-1] == 1    # 急漲段遠離均線 → 保留
+
+
+def test_no_trend_gate_blocks_strong_trend():
+    """無趨勢 gate(供 MR 用):強趨勢(遠離均線)時進場被濾掉。"""
+    n = 300
+    close = pd.Series(np.concatenate([np.full(150, 100.0), np.linspace(100, 220, 150)]))
+    df = pd.DataFrame(
+        {"timestamp": pd.date_range("2024-01-01", periods=n, freq="15min", tz="UTC"),
+         "open": close, "high": close + 0.5, "low": close - 0.5, "close": close,
+         "volume": 1.0}
+    )
+    entry = pd.Series([1] * n)
+    out = no_trend_gate(df, entry, ema_span=50, lookback=50)
+    assert out.iloc[-1] == 0   # 強趨勢遠離均線 → MR 被 gate 擋掉
 
 
 def test_bollinger_revert_fades_extremes():

@@ -22,6 +22,7 @@ from signals.library import (
     ema_cross,
     ema_ribbon_trend,
     regime_filter,
+    trend_distance_gate,
 )
 
 
@@ -65,6 +66,7 @@ class TrendPortfolio:
     trailing_atr_mult: float = 4.0
     risk_per_trade: float = 0.02  # 穩健檔:每筆最多賠權益 2%
     regime_ema: Optional[int] = 200  # 市場狀態濾網:只在 close 站上/跌破 EMA200 時順勢進場(None=關閉)
+    dist_gate_atr: Optional[float] = 1.0  # 趨勢強度 gate:|close-EMA200|/ATR 須 ≥ 此值才進場(None=關閉)
 
     def current_signals(self, data_by_coin: Dict[str, pd.DataFrame]) -> List[dict]:
         """回傳「這一根新出現」的可執行訊號事件清單。
@@ -80,6 +82,11 @@ class TrendPortfolio:
             sig = leg.signal_fn(d)
             if self.regime_ema is not None:
                 sig = regime_filter(d, sig, self.regime_ema)
+            if self.dist_gate_atr is not None:
+                sig = trend_distance_gate(
+                    d, sig, ema_span=self.regime_ema or 200,
+                    min_atr_mult=self.dist_gate_atr,
+                )
             if len(sig) < 2:
                 continue
             now = int(sig.iloc[-1])

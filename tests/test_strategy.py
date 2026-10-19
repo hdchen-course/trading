@@ -26,8 +26,8 @@ def _portfolio_with_tail(last, prev):
         return s
 
     leg = Leg(coin="BTCUSDT", timeframe="1h", name="test", signal_fn=fn)
-    # 關閉 regime 濾網以隔離「轉換偵測」邏輯(regime 另有專屬測試)
-    return TrendPortfolio(legs=[leg], stop_loss_pct=0.06, regime_ema=None)
+    # 關閉 regime 與距離 gate 以隔離「轉換偵測」邏輯(gate 另有專屬測試)
+    return TrendPortfolio(legs=[leg], stop_loss_pct=0.06, regime_ema=None, dist_gate_atr=None)
 
 
 def test_fresh_long_triggers_event():
@@ -71,6 +71,6 @@ def test_regime_filter_blocks_countertrend_short_in_uptrend():
         return s
 
     leg = Leg(coin="BTCUSDT", timeframe="1h", name="t", signal_fn=fn)
-    p = TrendPortfolio(legs=[leg], regime_ema=200)  # 預設開啟
+    p = TrendPortfolio(legs=[leg], regime_ema=200, dist_gate_atr=None)  # 只測 regime
     # _raw 是嚴格上升盤 → close > EMA200 → 空單被 regime 濾掉
     assert p.current_signals({"BTCUSDT": _raw()}) == []

@@ -10,7 +10,9 @@ from signals.library import (
     donchian_breakout,
     ema_cross,
     ema_ribbon_trend,
+    no_trend_gate,
     regime_filter,
+    trend_distance_gate,
     with_trend_filter,
 )
 
@@ -19,6 +21,8 @@ __all__ = [
     "ema_cross",
     "ema_ribbon_trend",
     "regime_filter",
+    "trend_distance_gate",
+    "no_trend_gate",
     "bollinger_revert",
     "with_trend_filter",
 ]
