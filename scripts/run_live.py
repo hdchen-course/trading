@@ -22,23 +22,39 @@ import pandas as pd  # noqa: E402
 from engine.fetch_binance import fetch_recent  # noqa: E402
 from engine.ledger import log_signals  # noqa: E402
 from engine.notify import format_signal_events, send_telegram, telegram_configured  # noqa: E402
-from engine.strategy import TrendPortfolio, default_legs  # noqa: E402
+from engine.strategy import TrendPortfolio, default_legs, equity_legs  # noqa: E402
 
-COINS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
-         "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT"]
+# 實際交易宇宙:加密只 BTC/AAVE(24h,幣安 1h);美股/ETF(日線)
+CRYPTO = ["BTCUSDT", "AAVEUSDT"]
+EQUITIES = ["SOXL", "TQQQ", "SOXX", "KORU", "MSTR", "INTC", "NVDA", "SPXL",
+            "TNA", "LABU", "FAS", "ERX", "NUGT", "YINN", "UDOW", "UPRO"]
 
 
 def main() -> None:
     now = pd.Timestamp.utcnow()
     print(f"[{now:%Y-%m-%d %H:%M} UTC] 抓取最新資料並檢查訊號...")
     data = {}
-    for c in COINS:
+    legs = list(default_legs(CRYPTO))
+    for c in CRYPTO:
         try:
             data[c] = fetch_recent(c, "1h", bars=6000)
-        except Exception as exc:  # 單一幣失敗不影響其他
+        except Exception as exc:  # 單一標的失敗不影響其他
             print(f"  ⚠️ {c} 抓取失敗: {exc}")
 
-    port = TrendPortfolio(legs=default_legs(COINS))
+    # 美股/ETF 日線(yfinance 研究資料源;老機器無 yfinance 時此段略過,加密路徑仍可跑)
+    try:
+        from engine.fetch_equity import load_or_fetch_daily
+
+        for s in EQUITIES:
+            try:
+                data[s] = load_or_fetch_daily(s)
+            except Exception as exc:
+                print(f"  ⚠️ {s} 抓取失敗: {exc}")
+        legs += equity_legs([s for s in EQUITIES if s in data])
+    except Exception as exc:
+        print(f"  ⚠️ 美股資料層不可用(略過,僅跑加密): {exc}")
+
+    port = TrendPortfolio(legs=legs)
     events = port.current_signals(data)
 
     if not events:

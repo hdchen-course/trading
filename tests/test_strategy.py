@@ -4,7 +4,7 @@
 import numpy as np
 import pandas as pd
 
-from engine.strategy import Leg, TrendPortfolio
+from engine.strategy import Leg, TrendPortfolio, default_legs, equity_legs
 
 
 def _raw(n=60):
@@ -60,6 +60,17 @@ def test_no_signal_no_event():
 def test_missing_coin_is_skipped():
     p = _portfolio_with_tail(last=1, prev=0)
     assert p.current_signals({}) == []  # 沒資料不報錯
+
+
+def test_default_and_equity_legs_shapes():
+    """加密腿 3×幣(4h/8h/12h);美股腿 3×標的(全日線)。"""
+    c = default_legs(["BTCUSDT", "AAVEUSDT"])
+    assert len(c) == 6
+    assert {leg.timeframe for leg in c} == {"4h", "8h", "12h"}
+    e = equity_legs(["SOXL", "TQQQ"])
+    assert len(e) == 6
+    assert {leg.timeframe for leg in e} == {"1d"}
+    assert {leg.coin for leg in e} == {"SOXL", "TQQQ"}
 
 
 def test_regime_filter_blocks_countertrend_short_in_uptrend():

@@ -37,7 +37,7 @@ class Leg:
 
 
 def default_legs(coins: List[str]) -> List[Leg]:
-    """對每個幣種套用三個通過樣本外驗證的順勢訊號。"""
+    """加密標的(24h):每個幣套用三個通過樣本外驗證的高週期順勢訊號(4h/8h/12h)。"""
     legs: List[Leg] = []
     for coin in coins:
         legs.append(Leg(coin, "4h", "EMA50/200", lambda d: ema_cross(d, 50, 200)))
@@ -46,6 +46,16 @@ def default_legs(coins: List[str]) -> List[Leg]:
             Leg(coin, "12h", "ribbon",
                 lambda d: ema_ribbon_trend(d, (90, 120, 240, 300, 420)))
         )
+    return legs
+
+
+def equity_legs(symbols: List[str]) -> List[Leg]:
+    """美股/ETF(非 24h):日線三個順勢訊號(EMA50/200、EMA20/50、Donchian20)。"""
+    legs: List[Leg] = []
+    for s in symbols:
+        legs.append(Leg(s, "1d", "EMA50/200", lambda d: ema_cross(d, 50, 200)))
+        legs.append(Leg(s, "1d", "EMA20/50", lambda d: ema_cross(d, 20, 50)))
+        legs.append(Leg(s, "1d", "Donchian20", lambda d: donchian_breakout(d, 20)))
     return legs
 
 
