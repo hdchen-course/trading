@@ -147,7 +147,9 @@ class TrendPortfolio:
             if state == 0:
                 continue
             held = self._bars_in_state(sig)
-            if held >= self.max_hold_bars:
+            # 只在「換倉點」(持倉=max_hold 的整數倍:80/160/240…)各發一次,避免持續趨勢每根狂噴;
+            # 對應回測「到期平倉+重進、計時歸零」語義。假設 live 至少每根(該週期)跑一次。
+            if held >= self.max_hold_bars and held % self.max_hold_bars == 0:
                 exits.append({
                     "coin": leg.coin, "timeframe": leg.timeframe,
                     "signal_name": leg.name,

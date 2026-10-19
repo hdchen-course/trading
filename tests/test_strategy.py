@@ -115,6 +115,16 @@ def test_current_exits_silent_when_held_below_max_hold():
     assert p.current_exits({"BTCUSDT": _raw()}) == []
 
 
+def test_current_exits_only_at_rollover_multiples():
+    """只在換倉點(max_hold 整數倍)發,非整數倍不發(避免持續趨勢每根狂噴)。"""
+    # held=13, max_hold=10 → 13%10≠0 → 不發
+    assert _const_portfolio(state=1, n_tail=13, max_hold=10).current_exits(
+        {"BTCUSDT": _raw()}) == []
+    # held=20, max_hold=10 → 20%10==0 → 發
+    assert len(_const_portfolio(state=1, n_tail=20, max_hold=10).current_exits(
+        {"BTCUSDT": _raw()})) == 1
+
+
 def test_current_exits_none_when_flat_or_disabled():
     p_flat = _const_portfolio(state=0, n_tail=30, max_hold=10)
     assert p_flat.current_exits({"BTCUSDT": _raw()}) == []
