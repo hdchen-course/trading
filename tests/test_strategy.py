@@ -160,19 +160,21 @@ def test_meta_model_tilts_position_size(tmp_path):
     assert ev[0]["notional_pct_of_equity"] == pytest.approx(round(0.333 * qm, 3), abs=0.01)
 
 
-def test_entry_event_carries_scale_out_hint():
-    """進場事件應帶分批放目標與提示:多單目標在上方(+20%),空單在下方。"""
+def test_entry_event_carries_scale_out_tranches():
+    """進場事件應帶階梯分批放:多單目標在上方(+20%/+40%),空單在下方。"""
     p_long = _portfolio_with_tail(last=1, prev=0)
     ev = p_long.current_signals({"BTCUSDT": _raw()})[0]
-    assert ev["scale_out_frac"] == 0.5
-    assert ev["scale_out_target"] == pytest.approx(ev["price"] * 1.20, rel=1e-6)  # 多單 +20%
-    assert "分批放" not in ev["scale_out_hint"]  # 提示本身不含前綴(由顯示端加)
+    ts = ev["scale_out_targets"]
+    assert len(ts) == 2
+    assert ts[0]["frac"] == 0.33 and ts[1]["frac"] == 0.33
+    assert ts[0]["target"] == pytest.approx(ev["price"] * 1.20, rel=1e-6)  # 多單 +20%
+    assert ts[1]["target"] == pytest.approx(ev["price"] * 1.40, rel=1e-6)  # 多單 +40%
     assert "減碼" in ev["scale_out_hint"]
 
     p_short = _portfolio_with_tail(last=-1, prev=0)
-    # 關 regime 才能讓空單在上升樣本過(_portfolio_with_tail 已關 gate)
     evs = p_short.current_signals({"BTCUSDT": _raw()})
-    assert evs[0]["scale_out_target"] == pytest.approx(evs[0]["price"] * 0.80, rel=1e-6)  # 空單 -20%
+    assert evs[0]["scale_out_targets"][0]["target"] == pytest.approx(
+        evs[0]["price"] * 0.80, rel=1e-6)  # 空單 -20%
 
 
 def test_regime_filter_blocks_countertrend_short_in_uptrend():

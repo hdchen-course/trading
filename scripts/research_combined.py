@@ -95,11 +95,11 @@ def leg_daily_returns(df, sig, bt_kwargs, take_profit=None):
     return eq.pct_change()
 
 
-# 分批放(scale-out):到 +SCALE_OUT_AT 獲利減碼 SCALE_OUT_FRAC,其餘續跑 6×ATR 移動停損。
-# 報酬對部位線性 + core/runner 同根進場 → 日報酬 blend 等價。端錨多窗驗證全部窗 Sharpe 升、
-# 回撤持平,+15~40% 目標皆成立(寬平台非擬合),crypto 與 equity 皆受益(見 scale_out_study)。
-SCALE_OUT_FRAC = 0.5
-SCALE_OUT_AT = 0.20
+# 分批放(scale-out,階梯多段):(減碼比例, 獲利目標)列;其餘為 runner 續跑 6×ATR 移動停損。
+# 報酬對部位線性 + 各段同根進場 → 日報酬 blend 等價。端錨多窗驗證:階梯(33%@+20%+33%@+40%)
+# 全窗 Sharpe 升且勝單段 50%@+20%(全期 0.93→1.01、近2~5 皆升、回撤持平),+15~40% 寬平台非擬合,
+# crypto 與 equity 皆受益(見 scale_out_study)。第二段 +40% 是階梯優於單段的來源(非首口大小)。
+SCALE_OUT_TRANCHES = [(0.33, 0.20), (0.33, 0.40)]
 
 
 def maxdd(equity):
@@ -131,8 +131,11 @@ def collect_legs(scale_out=False):
         runner = leg_daily_returns(d, sig, bt)
         if not scale_out:
             return runner
-        core = leg_daily_returns(d, sig, bt, take_profit=SCALE_OUT_AT)
-        return SCALE_OUT_FRAC * core + (1 - SCALE_OUT_FRAC) * runner
+        run_frac = 1.0 - sum(f for f, _ in SCALE_OUT_TRANCHES)
+        acc = run_frac * runner
+        for frac, tp in SCALE_OUT_TRANCHES:
+            acc = acc + frac * leg_daily_returns(d, sig, bt, take_profit=tp)
+        return acc
 
     legs = []
     for c in CRYPTO:

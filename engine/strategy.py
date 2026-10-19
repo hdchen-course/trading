@@ -75,10 +75,10 @@ class TrendPortfolio:
     stop_loss_pct: float = 0.06
     atr_period: int = 14
     trailing_atr_mult: float = 6.0  # 端錨多窗驗證:6× 勝 4× 於全部窗(讓趨勢續跑、少砍早),回撤持平
-    # 分批放(scale-out):到達 +scale_out_at_pct 獲利時減碼 scale_out_frac,其餘續跑 6×ATR 移動停損。
-    # 端錨多窗驗證(scale_out_study):全部窗 Sharpe 升、回撤持平,+15~40% 目標皆成立(寬平台非擬合)。
-    scale_out_frac: float = 0.5
-    scale_out_at_pct: float = 0.20
+    # 分批放(scale-out,階梯多段):(減碼比例, 獲利目標)列,其餘續跑 6×ATR 移動停損。
+    # 端錨多窗驗證(scale_out_study):階梯 33%@+20%+33%@+40% 全窗 Sharpe 升且勝單段、回撤持平,
+    # +15~40% 寬平台非擬合;第二段 +40% 是階梯優於單段的關鍵(非首口大小)。
+    scale_out_tranches: tuple = ((0.33, 0.20), (0.33, 0.40))
     risk_per_trade: float = 0.02  # 穩健檔:每筆最多賠權益 2%
     regime_ema: Optional[int] = 200  # 市場狀態濾網:只在 close 站上/跌破 EMA200 時順勢進場(None=關閉)
     dist_gate_atr: Optional[float] = 1.0  # 趨勢強度 gate:|close-EMA200|/ATR 須 ≥ 此值才進場(None=關閉)
@@ -216,11 +216,17 @@ class TrendPortfolio:
                         quality_mult = round(float(meta.size_multiplier(row)[0]), 3)
                     except Exception:
                         quality_mult = 1.0
-                # 分批放目標價(方向相關):多單在上方、空單在下方
-                scale_target = (
-                    price * (1 + self.scale_out_at_pct)
-                    if now > 0
-                    else price * (1 - self.scale_out_at_pct)
+                # 分批放目標(方向相關):多單在上方、空單在下方。多段階梯。
+                scale_targets = [
+                    {"frac": frac,
+                     "target": round(price * (1 + pct) if now > 0 else price * (1 - pct), 6),
+                     "at_pct": pct}
+                    for frac, pct in self.scale_out_tranches
+                ]
+                scale_hint = (
+                    ";".join(f"到 {t['target']:.4f}(+{t['at_pct']:.0%})減碼 {t['frac']:.0%}"
+                             for t in scale_targets)
+                    + f",其餘 {self.trailing_atr_mult}×ATR 移動停損"
                 )
                 events.append(
                     {
@@ -236,12 +242,8 @@ class TrendPortfolio:
                         "quality_mult": quality_mult,
                         "notional_pct_of_equity": round(notional_pct * quality_mult, 3),
                         "trailing_hint": f"{self.trailing_atr_mult}×ATR 移動停損",
-                        "scale_out_frac": self.scale_out_frac,
-                        "scale_out_target": round(scale_target, 6),
-                        "scale_out_hint": (
-                            f"到 {scale_target:.4f}(+{self.scale_out_at_pct:.0%})"
-                            f"減碼 {self.scale_out_frac:.0%},其餘 {self.trailing_atr_mult}×ATR 移動停損"
-                        ),
+                        "scale_out_targets": scale_targets,
+                        "scale_out_hint": scale_hint,
                     }
                 )
         return events

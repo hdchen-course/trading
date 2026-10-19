@@ -206,8 +206,8 @@ def main():
     lines = []
     lines.append(f"# 誠實績效報告(自動產生,{pd.Timestamp.utcnow():%Y-%m-%d %H:%M} UTC)\n")
     lines.append("系統:高週期順勢(EMA/Donchian/ribbon)+ regime(EMA200)+ 距離 gate + "
-                 "ATR 移動停損(6×)+ 分批放(到+20%減碼50%、其餘續跑)+ 時間停損(max_hold 80)"
-                 "+ 每筆風險 2% + 多標的分散。")
+                 "ATR 移動停損(6×)+ 分批放階梯(+20%減33%、+40%減33%、其餘續跑)"
+                 "+ 時間停損(max_hold 80)+ 每筆風險 2% + 多標的分散。")
     lines.append(f"宇宙:加密 {rc.CRYPTO}(4h/8h/12h)+ 美股 {len(rc.EQUITY)} 檔非槓桿(日線)。"
                  f"共 {len(port)} 條 leg,組合 {len(p)} 日。每窗放大到 18% 最大回撤預算。\n")
     lines.append(f"{'時間窗':<12}{'年化':>9}{'回撤':>8}{'Sharpe':>9}{'週勝率':>9}{'週達標+1.5%':>12}")
