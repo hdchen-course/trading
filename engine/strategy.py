@@ -78,6 +78,41 @@ class TrendPortfolio:
     regime_ema: Optional[int] = 200  # 市場狀態濾網:只在 close 站上/跌破 EMA200 時順勢進場(None=關閉)
     dist_gate_atr: Optional[float] = 1.0  # 趨勢強度 gate:|close-EMA200|/ATR 須 ≥ 此值才進場(None=關閉)
 
+    def _gated_signal(self, leg: Leg, raw: pd.DataFrame):
+        """對單一腿算出「套完 regime + 距離 gate」的訊號序列。回傳 (d, sig) 或 None。
+
+        current_signals(新觸發事件)與 current_states(當前狀態)共用,避免 gate 邏輯重複。
+        """
+        if raw is None or len(raw) < 50:
+            return None
+        d = resample_ohlcv(raw, leg.timeframe)
+        sig = leg.signal_fn(d)
+        if self.regime_ema is not None:
+            sig = regime_filter(d, sig, self.regime_ema)
+        if self.dist_gate_atr is not None:
+            sig = trend_distance_gate(
+                d, sig, ema_span=self.regime_ema or 200,
+                min_atr_mult=self.dist_gate_atr,
+            )
+        if len(sig) < 2:
+            return None
+        return d, sig
+
+    def current_states(self, data_by_coin: Dict[str, pd.DataFrame]) -> List[dict]:
+        """回傳每條腿「當前 gated 訊號狀態」(1/0/-1),供儀表板總覽(非只看新觸發)。"""
+        states: List[dict] = []
+        for leg in self.legs:
+            res = self._gated_signal(leg, data_by_coin.get(leg.coin))
+            if res is None:
+                continue
+            d, sig = res
+            states.append({
+                "coin": leg.coin, "timeframe": leg.timeframe,
+                "signal_name": leg.name, "state": int(sig.iloc[-1]),
+                "price": float(d["close"].iloc[-1]),
+            })
+        return states
+
     def current_signals(self, data_by_coin: Dict[str, pd.DataFrame]) -> List[dict]:
         """回傳「這一根新出現」的可執行訊號事件清單。
 
@@ -85,20 +120,10 @@ class TrendPortfolio:
         """
         events: List[dict] = []
         for leg in self.legs:
-            raw = data_by_coin.get(leg.coin)
-            if raw is None or len(raw) < 50:
+            res = self._gated_signal(leg, data_by_coin.get(leg.coin))
+            if res is None:
                 continue
-            d = resample_ohlcv(raw, leg.timeframe)
-            sig = leg.signal_fn(d)
-            if self.regime_ema is not None:
-                sig = regime_filter(d, sig, self.regime_ema)
-            if self.dist_gate_atr is not None:
-                sig = trend_distance_gate(
-                    d, sig, ema_span=self.regime_ema or 200,
-                    min_atr_mult=self.dist_gate_atr,
-                )
-            if len(sig) < 2:
-                continue
+            d, sig = res
             now = int(sig.iloc[-1])
             prev = int(sig.iloc[-2])
             # 只在「新翻成多/空」的那一根通知(0或反向 → 多/空)

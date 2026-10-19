@@ -62,6 +62,21 @@ def test_missing_coin_is_skipped():
     assert p.current_signals({}) == []  # 沒資料不報錯
 
 
+def test_current_states_reports_gated_state():
+    """current_states 回報每條腿當前 gated 狀態(此處關 gate,直接反映訊號末值)。"""
+    def fn(d):
+        s = pd.Series(0, index=d.index, dtype=int)
+        s.iloc[-1] = 1
+        return s
+
+    leg = Leg(coin="BTCUSDT", timeframe="1h", name="t", signal_fn=fn)
+    p = TrendPortfolio(legs=[leg], regime_ema=None, dist_gate_atr=None)
+    states = p.current_states({"BTCUSDT": _raw()})
+    assert len(states) == 1
+    assert states[0]["state"] == 1
+    assert states[0]["coin"] == "BTCUSDT"
+
+
 def test_default_and_equity_legs_shapes():
     """加密腿 3×幣(4h/8h/12h);美股腿 3×標的(全日線)。"""
     c = default_legs(["BTCUSDT", "AAVEUSDT"])

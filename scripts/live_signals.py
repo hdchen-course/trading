@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Live 訊號儀表板:輸出各幣各訊號的「當前狀態」與「這一根是否剛觸發」。
+"""Live 訊號儀表板(乾跑,不推播、不落帳):
 
-這是未來 Telegram 通知的內容來源。目前讀 data/cache 的歷史(剛抓的,接近當下);
-正式上線時由監控迴圈定期以最新資料呼叫 TrendPortfolio.current_signals()。
+- 當前各腿 gated 訊號「狀態」(做多/做空/觀望)
+- 這一根剛觸發的新訊號(= run_live 會推播的)
+
+宇宙與 run_live 一致:加密 BTC/AAVE(幣安 1h)+ 美股/ETF(日線)。讀快取為主,
+故反映最近一次抓取的狀態;要當下即時請跑 run_live(會刷新)。
 
 執行:./venv/bin/python scripts/live_signals.py
 """
@@ -15,47 +18,47 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-import pandas as pd  # noqa: E402
-
-from engine.data import resample_ohlcv  # noqa: E402
 from engine.fetch_binance import load_or_fetch  # noqa: E402
-from engine.strategy import TrendPortfolio, default_legs  # noqa: E402
+from engine.strategy import TrendPortfolio, default_legs, equity_legs  # noqa: E402
 
-COINS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
-         "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "LINKUSDT", "LTCUSDT"]
+CRYPTO = ["BTCUSDT", "AAVEUSDT"]
+EQUITIES = ["SOXL", "TQQQ", "SOXX", "KORU", "MSTR", "INTC", "NVDA", "SPXL",
+            "TNA", "LABU", "FAS", "ERX", "NUGT", "YINN", "UDOW", "UPRO"]
+_STATE = {1: "做多", -1: "做空", 0: "觀望"}
 
 
 def main() -> None:
-    data = {c: load_or_fetch(c, "1h") for c in COINS}
-    latest = max(df["timestamp"].max() for df in data.values())
-    print(f"資料截至約 {latest} (UTC) / {latest + pd.Timedelta(hours=8)} (台北)\n")
+    data = {c: load_or_fetch(c, "1h") for c in CRYPTO}
+    legs = list(default_legs(CRYPTO))
+    try:
+        from engine.fetch_equity import load_or_fetch_daily
 
-    port = TrendPortfolio(legs=default_legs(COINS))
+        for s in EQUITIES:
+            d = load_or_fetch_daily(s)  # 讀快取(儀表板用,不強制刷新)
+            if len(d):
+                data[s] = d
+        legs += equity_legs([s for s in EQUITIES if s in data])
+    except Exception as exc:
+        print(f"⚠️ 美股資料層不可用(僅顯示加密): {exc}")
 
-    # 1) 當前狀態總表(每腿:多/空/觀望)
-    print("=== 當前各訊號狀態 ===")
-    header = f"{'幣種':<10}{'EMA50/200(4h)':>16}{'Donchian20(8h)':>16}{'ribbon(12h)':>14}"
-    print(header)
-    for coin in COINS:
-        raw = data[coin]
-        states = []
-        for leg in [lg for lg in port.legs if lg.coin == coin]:
-            d = resample_ohlcv(raw, leg.timeframe)
-            s = int(leg.signal_fn(d).iloc[-1])
-            states.append({1: "做多", -1: "做空", 0: "觀望"}[s])
-        print(f"{coin:<10}{states[0]:>14}{states[1]:>16}{states[2]:>14}")
+    port = TrendPortfolio(legs=legs)
 
-    # 2) 這一根剛觸發的新訊號(= 會發 Telegram 的)
+    print("=== 當前各訊號狀態(已套 regime + 距離 gate)===")
+    print(f"{'標的':<10}{'週期':>5}{'訊號':>12}{'狀態':>6}{'價格':>12}")
+    for s in port.current_states(data):
+        if s["state"] != 0:  # 只列有部位的,觀望的省略以免洗版
+            print(f"{s['coin']:<10}{s['timeframe']:>5}{s['signal_name']:>12}"
+                  f"{_STATE[s['state']]:>6}{s['price']:>12.4f}")
+
     events = port.current_signals(data)
-    print("\n=== 本根剛觸發的新訊號(未來會推播) ===")
+    print("\n=== 本根剛觸發的新訊號(run_live 會推播)===")
     if not events:
-        print("(目前沒有新觸發的訊號 — 多數時間如此,這是正常的低頻特性)")
+        print("(目前沒有新觸發 — 低頻特性,多數時間如此)")
     else:
         for e in events:
-            print(
-                f"🔔 {e['coin']} {e['direction']} | {e['signal_name']}({e['timeframe']}) | "
-                f"價 {e['price']:.4f} | 建議初始停損 {e['init_stop']:.4f} | {e['trailing_hint']}"
-            )
+            print(f"🔔 {e['coin']} {e['direction']} | {e['signal_name']}({e['timeframe']}) | "
+                  f"價 {e['price']:.4f} | 初始停損 {e['init_stop']:.4f} | "
+                  f"部位≈權益{e['notional_pct_of_equity']:.0%}")
 
 
 if __name__ == "__main__":
