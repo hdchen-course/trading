@@ -52,6 +52,18 @@ export TELEGRAM_BOT_TOKEN="..."; export TELEGRAM_CHAT_ID="..."   # 可選
 ./venv/bin/python scripts/run_live.py
 ```
 
+### 每小時自動跑(排程)
+
+`scripts/run_live.sh` 會啟用 venv、跑 `run_live.py`、把觸發訊號落地到 `output/paper_trades.csv`。
+掛進 macOS crontab(每小時第 1 分執行、輸出寫 log):
+
+```bash
+crontab -e   # 加入一行(路徑換成你的實際路徑)
+1 * * * * /Volumes/workplace/EnglishTraining/trading/scripts/run_live.sh >> /Volumes/workplace/EnglishTraining/trading/output/run_live.log 2>&1
+```
+
+訊號會持續累積在 `output/paper_trades.csv`(紙上帳本),可日後比對「實盤 vs 回測」。
+
 ## 誠實的績效期望(真實資料、扣手續費+滑價、含樣本外)
 
 10 幣 × 3 順勢訊號組合,回撤控制在 ~18% 預算內:
