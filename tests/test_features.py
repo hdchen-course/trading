@@ -36,6 +36,8 @@ _FEATURES = {
     "dist_resist": lambda d: F.dist_to_resistance(d),
     "dist_support": lambda d: F.dist_to_support(d),
     "trend_age200": lambda d: F.trend_age(d, 200),
+    "dist_daily_axis": lambda d: F.htf_ma_distance(d, "1D", 50),
+    "dist_weekly_axis": lambda d: F.htf_ma_distance(d, "1W", 20),
 }
 
 

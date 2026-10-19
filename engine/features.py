@@ -112,6 +112,26 @@ def trend_age(df: pd.DataFrame, span: int = 200) -> pd.Series:
     return grp.groupby(grp).cumcount().astype(float)
 
 
+def htf_ma_distance(df: pd.DataFrame, rule: str, span: int, atr_period: int = 14) -> pd.Series:
+    """收盤距「高週期均線」的距離(ATR 單位,signed),無前視。
+    使用者直覺:低週期的長均線 ≈ 高週期的軸線(如 2h 300EMA≈月線),這些高週期均線常是
+    結構性壓力/支撐。rule 例如 '1D'(日線軸)、'1W'(週線軸)。
+
+    無前視做法:把 df 依 timestamp resample 到 rule、對高週期收盤算 EMA,再 **shift(1) 一根高週期**
+    (只用『已收完』的高週期 bar),用 reindex(method='ffill') 映回低週期——低週期第 t 根只會拿到
+    「在 t 之前已收盤」的高週期均線值。需要 df 有 timestamp 欄。
+    """
+    if "timestamp" not in df.columns:
+        raise ValueError("htf_ma_distance 需要 df 含 timestamp 欄")
+    s = df.set_index(pd.DatetimeIndex(df["timestamp"]))["close"]
+    htf_close = s.resample(rule, label="left", closed="left").last()
+    ma = htf_close.ewm(span=span, adjust=False).mean().shift(1)  # 只用已收完的高週期 bar
+    ma_base = ma.reindex(s.index, method="ffill")  # 每根低週期取「≤當下」最近的已知高週期均線
+    a = _atr(df, atr_period)
+    dist = (df["close"].to_numpy() - ma_base.to_numpy()) / a.replace(0.0, np.nan).to_numpy()
+    return pd.Series(dist, index=df.index)
+
+
 def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
     """組裝一組預設特徵(全部無前視),回傳與 df 同索引的特徵 DataFrame。
     模型/研究由此取用;欄位可擴充。"""
@@ -125,4 +145,6 @@ def build_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
         "dist_resist": dist_to_resistance(df),
         "dist_support": dist_to_support(df),
         "trend_age200": trend_age(df, 200),
+        "dist_daily_axis": htf_ma_distance(df, "1D", 50),   # 日線軸(EMA50)
+        "dist_weekly_axis": htf_ma_distance(df, "1W", 20),  # 週線軸(EMA20)
     }, index=df.index)
