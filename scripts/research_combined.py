@@ -71,10 +71,11 @@ EQUITY_SIGS = [
 
 BT_CRYPTO = dict(fee_rate=0.0004, slippage_rate=0.0002, stop_loss_pct=0.06)
 BT_EQUITY = dict(fee_rate=0.0002, slippage_rate=0.0003, stop_loss_pct=0.08)
-# max_hold_bars=60:時間停損。研究(我獨立複驗,用引擎內建 max_hold_bars)顯示順勢單開太久
-# (>60根)常在高位盤整/出貨把獲利吐回,到期砍掉換倉更好。40-120 整片高原、OOS 與近4年雙軸都
-# 勝基準、且「美股only」(拿掉2條弱 crypto leg)改善一樣在 → 穩健非過擬合。OOS Sharpe 0.86→1.16。
-BT_COMMON = dict(take_profit_pct=None, max_hold_bars=60, allow_opposite_exit=True,
+# max_hold_bars=80:時間停損。順勢單開太久常在高位盤整/出貨把獲利吐回,到期砍掉換倉更好。
+# 用穩定的 end-anchored 窗(近2/3/4/5/6年)複驗:None=1.50/1.52/1.49/1.24/0.97,
+# 80=1.62/1.67/1.64/1.36/1.28(每個窗都升),美股only 1.45..→1.57..全升;40/80/120 都贏、
+# 效果穩健(60 剛好落在小凹,先前選 60 是被 vintage 敏感的「後30% OOS」誤導,已更正為 80)。
+BT_COMMON = dict(take_profit_pct=None, max_hold_bars=80, allow_opposite_exit=True,
                  trailing_atr_mult=4.0, atr_period=14, leverage=10.0,
                  risk_per_trade_pct=0.02, initial_capital=10000.0)
 
