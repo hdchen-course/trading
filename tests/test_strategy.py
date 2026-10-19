@@ -3,6 +3,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from engine.strategy import Leg, TrendPortfolio, default_legs, equity_legs
 
@@ -130,6 +131,33 @@ def test_current_exits_none_when_flat_or_disabled():
     assert p_flat.current_exits({"BTCUSDT": _raw()}) == []
     p_off = _const_portfolio(state=1, n_tail=30, max_hold=None)
     assert p_off.current_exits({"BTCUSDT": _raw()}) == []
+
+
+def test_meta_model_tilts_position_size(tmp_path):
+    """掛上 meta 模型後,current_signals 事件應帶 quality_mult 並據此傾斜建議部位。"""
+    import numpy as np
+    from engine.meta_model import FEATURE_COLS, train
+
+    rng = np.random.default_rng(0)
+    Xtr = pd.DataFrame({c: rng.normal(0, 1, 500) for c in FEATURE_COLS})
+    ytr = (rng.uniform(0, 1, 500) < 1 / (1 + np.exp(-Xtr["dist_ema200"]))).astype(int)
+    mp = tmp_path / "m.pkl"
+    train(Xtr, ytr, kind="gbm").save(mp)
+
+    def fn(d):
+        s = pd.Series(0, index=d.index, dtype=int)
+        s.iloc[-1] = 1  # 末根新翻多
+        return s
+
+    leg = Leg(coin="BTCUSDT", timeframe="1h", name="t", signal_fn=fn)
+    p = TrendPortfolio(legs=[leg], regime_ema=None, dist_gate_atr=None,
+                       stop_loss_pct=0.06, risk_per_trade=0.02, meta_model_path=str(mp))
+    ev = p.current_signals({"BTCUSDT": _raw()})
+    assert len(ev) == 1
+    qm = ev[0]["quality_mult"]
+    assert 0.3 - 1e-9 <= qm <= 2.0 + 1e-9
+    # 建議部位 = 基礎(0.02/0.06≈0.333)× quality_mult
+    assert ev[0]["notional_pct_of_equity"] == pytest.approx(round(0.333 * qm, 3), abs=0.01)
 
 
 def test_regime_filter_blocks_countertrend_short_in_uptrend():

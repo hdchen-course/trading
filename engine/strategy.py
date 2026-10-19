@@ -17,6 +17,7 @@ from typing import Callable, Dict, List, Optional
 import pandas as pd
 
 from engine.data import atr, resample_ohlcv
+from engine.features import build_feature_frame
 from signals.library import (
     donchian_breakout,
     ema_cross,
@@ -78,6 +79,21 @@ class TrendPortfolio:
     regime_ema: Optional[int] = 200  # 市場狀態濾網:只在 close 站上/跌破 EMA200 時順勢進場(None=關閉)
     dist_gate_atr: Optional[float] = 1.0  # 趨勢強度 gate:|close-EMA200|/ATR 須 ≥ 此值才進場(None=關閉)
     max_hold_bars: Optional[int] = 80  # 時間停損:持倉滿此根數(該腿週期)建議平倉(回測驗證的 edge,None=關閉)
+    meta_model_path: Optional[str] = None  # 交易品質 meta 模型路徑;設了則用它對訊號做部位倍率傾斜(None=關閉)
+    _meta: object = field(default=None, init=False, repr=False, compare=False)
+    _meta_loaded: bool = field(default=False, init=False, repr=False, compare=False)
+
+    def _get_meta(self):
+        """延遲載入 meta 模型;載入失敗(無檔/無 sklearn)→ None,不影響主流程。"""
+        if not self._meta_loaded:
+            self._meta_loaded = True
+            if self.meta_model_path:
+                try:
+                    from engine.meta_model import MetaModel
+                    self._meta = MetaModel.load(self.meta_model_path)
+                except Exception:
+                    self._meta = None
+        return self._meta
 
     def _gated_signal(self, leg: Leg, raw: pd.DataFrame):
         """對單一腿算出「套完 regime + 距離 gate」的訊號序列。回傳 (d, sig) 或 None。
@@ -187,6 +203,15 @@ class TrendPortfolio:
                 )
                 # 建議名目部位(佔權益比例)= 每筆風險 ÷ 停損距離,使停損被打到時恰賠 risk_per_trade
                 notional_pct = round(self.risk_per_trade / self.stop_loss_pct, 2)
+                # 交易品質 meta 傾斜:高把握加碼、低把握減碼(軟性,平均≈1;驗證見 meta_portfolio_study)
+                quality_mult = 1.0
+                meta = self._get_meta()
+                if meta is not None:
+                    try:
+                        row = build_feature_frame(d).iloc[[-1]]
+                        quality_mult = round(float(meta.size_multiplier(row)[0]), 3)
+                    except Exception:
+                        quality_mult = 1.0
                 events.append(
                     {
                         "coin": leg.coin,
@@ -198,7 +223,8 @@ class TrendPortfolio:
                         "init_stop": round(init_stop, 6),
                         "atr": round(atr_now, 6),
                         "risk_pct": self.risk_per_trade,
-                        "notional_pct_of_equity": notional_pct,
+                        "quality_mult": quality_mult,
+                        "notional_pct_of_equity": round(notional_pct * quality_mult, 3),
                         "trailing_hint": f"{self.trailing_atr_mult}×ATR 移動停損",
                     }
                 )

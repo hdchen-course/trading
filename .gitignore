@@ -54,3 +54,4 @@ scripts/research_scratch/
 output/performance.png
 output/run_live.log
 output/paper_trades.csv
+models/meta/

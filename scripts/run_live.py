@@ -57,14 +57,19 @@ def main() -> None:
     except Exception as exc:
         print(f"  ⚠️ 美股資料層不可用(略過,僅跑加密): {exc}")
 
-    port = TrendPortfolio(legs=legs)
+    # 有訓練好的 meta 模型就掛上(對訊號做品質部位傾斜);無則照常
+    meta_path = ROOT / "models" / "meta" / "meta_model.pkl"
+    port = TrendPortfolio(
+        legs=legs, meta_model_path=str(meta_path) if meta_path.exists() else None)
     events = port.current_signals(data)
     exits = port.current_exits(data)  # 時間停損:持倉滿 max_hold_bars 建議平倉(已驗證 edge)
 
     for e in events:
         print(
             f"🔔 {e['coin']} {e['direction']} | {e['signal_name']}({e['timeframe']}) | "
-            f"價 {e['price']:.4f} | 初始停損 {e['init_stop']:.4f}"
+            f"價 {e['price']:.4f} | 初始停損 {e['init_stop']:.4f} | "
+            f"建議部位≈權益{e['notional_pct_of_equity']:.1%}"
+            + (f"(品質×{e['quality_mult']})" if e.get('quality_mult', 1.0) != 1.0 else "")
         )
     for x in exits:
         print(
