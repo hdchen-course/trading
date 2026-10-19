@@ -17,7 +17,12 @@ from typing import Callable, Dict, List
 import pandas as pd
 
 from engine.data import atr, resample_ohlcv
-from signals.library import donchian_breakout, ema_cross, ema_ribbon_trend
+from signals.library import (
+    donchian_breakout,
+    ema_cross,
+    ema_ribbon_trend,
+    regime_filter,
+)
 
 
 @dataclass
@@ -59,6 +64,7 @@ class TrendPortfolio:
     atr_period: int = 14
     trailing_atr_mult: float = 4.0
     risk_per_trade: float = 0.02  # 穩健檔:每筆最多賠權益 2%
+    regime_ema: Optional[int] = 200  # 市場狀態濾網:只在 close 站上/跌破 EMA200 時順勢進場(None=關閉)
 
     def current_signals(self, data_by_coin: Dict[str, pd.DataFrame]) -> List[dict]:
         """回傳「這一根新出現」的可執行訊號事件清單。
@@ -72,6 +78,8 @@ class TrendPortfolio:
                 continue
             d = resample_ohlcv(raw, leg.timeframe)
             sig = leg.signal_fn(d)
+            if self.regime_ema is not None:
+                sig = regime_filter(d, sig, self.regime_ema)
             if len(sig) < 2:
                 continue
             now = int(sig.iloc[-1])

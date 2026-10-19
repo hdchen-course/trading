@@ -6,9 +6,11 @@
 """
 
 from signals.library import (
+    bollinger_revert,
     donchian_breakout,
     ema_cross,
     ema_ribbon_trend,
+    regime_filter,
     with_trend_filter,
 )
 
@@ -16,5 +18,7 @@ __all__ = [
     "donchian_breakout",
     "ema_cross",
     "ema_ribbon_trend",
+    "regime_filter",
+    "bollinger_revert",
     "with_trend_filter",
 ]

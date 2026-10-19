@@ -26,7 +26,8 @@ def _portfolio_with_tail(last, prev):
         return s
 
     leg = Leg(coin="BTCUSDT", timeframe="1h", name="test", signal_fn=fn)
-    return TrendPortfolio(legs=[leg], stop_loss_pct=0.06)
+    # 關閉 regime 濾網以隔離「轉換偵測」邏輯(regime 另有專屬測試)
+    return TrendPortfolio(legs=[leg], stop_loss_pct=0.06, regime_ema=None)
 
 
 def test_fresh_long_triggers_event():
@@ -59,3 +60,17 @@ def test_no_signal_no_event():
 def test_missing_coin_is_skipped():
     p = _portfolio_with_tail(last=1, prev=0)
     assert p.current_signals({}) == []  # 沒資料不報錯
+
+
+def test_regime_filter_blocks_countertrend_short_in_uptrend():
+    """預設 regime 濾網開啟:上升盤中的新空單應被濾掉(不產生事件)。"""
+    def fn(d):
+        s = pd.Series(0, index=d.index, dtype=int)
+        s.iloc[-2] = 1
+        s.iloc[-1] = -1  # 翻空
+        return s
+
+    leg = Leg(coin="BTCUSDT", timeframe="1h", name="t", signal_fn=fn)
+    p = TrendPortfolio(legs=[leg], regime_ema=200)  # 預設開啟
+    # _raw 是嚴格上升盤 → close > EMA200 → 空單被 regime 濾掉
+    assert p.current_signals({"BTCUSDT": _raw()}) == []

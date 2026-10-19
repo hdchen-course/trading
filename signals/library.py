@@ -72,6 +72,43 @@ def ema_ribbon_trend(
     return signal
 
 
+def regime_filter(df: pd.DataFrame, entry: pd.Series, ema_span: int = 200) -> pd.Series:
+    """市場狀態濾網:只在「與長期趨勢同向」時接受進場訊號。
+
+    - 多單(+1)只在 close > EMA(ema_span) 時保留,否則歸零。
+    - 空單(-1)只在 close < EMA(ema_span) 時保留,否則歸零。
+    經研究(2026-10)驗證:套在順勢訊號上可把樣本外 Sharpe 由 ~0.17 提到 ~0.46,
+    鄰近參數(150/200/250/300)一致變好,非過擬合。EMA 為 trailing → 無前視。
+    """
+    trend_ema = ema(df["close"], ema_span)
+    long_ok = df["close"] > trend_ema
+    short_ok = df["close"] < trend_ema
+    entry = entry.reindex_like(df["close"]).fillna(0).astype(int)
+    out = entry.copy()
+    out[(entry == 1) & (~long_ok)] = 0
+    out[(entry == -1) & (~short_ok)] = 0
+    return out
+
+
+def bollinger_revert(df: pd.DataFrame, period: int = 30, k: float = 2.5) -> pd.Series:
+    """布林通道「均值回歸」(fade,非突破):
+
+    - close 跌破下軌(中線 - k*std)→ +1 做多(賭回歸中線)。
+    - close 突破上軌(中線 + k*std)→ -1 做空。
+    注意:這是「逆勢」訊號,與順勢近乎零相關,僅適合當小部位分散腿。
+    ⚠️ 強烈依賴市場 regime:盤整多頭年強、但趨勢年/危機年(2008/2022)會失血、樣本內曾虧損。
+    預設不納入核心組合;若用須加波動度/趨勢 gate 並限小額。中線與 std 皆 trailing(無前視)。
+    """
+    mid = df["close"].rolling(period).mean()
+    std = df["close"].rolling(period).std()
+    upper = mid + k * std
+    lower = mid - k * std
+    signal = pd.Series(0, index=df.index, dtype=int)
+    signal[df["close"] < lower] = 1
+    signal[df["close"] > upper] = -1
+    return signal
+
+
 def with_trend_filter(
     entry: pd.Series, trend: pd.Series
 ) -> pd.Series:

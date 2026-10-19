@@ -25,7 +25,16 @@ from engine.backtester import EventBacktester  # noqa: E402
 from engine.data import resample_ohlcv  # noqa: E402
 from engine.fetch_binance import load_or_fetch  # noqa: E402
 from engine.fetch_equity import load_or_fetch_daily  # noqa: E402
-from signals.library import donchian_breakout, ema_cross, ema_ribbon_trend  # noqa: E402
+from signals.library import (  # noqa: E402
+    donchian_breakout,
+    ema_cross,
+    ema_ribbon_trend,
+    regime_filter,
+)
+
+# 是否對順勢腿套用 EMA200 市場狀態濾網(研究驗證可提升樣本外 Sharpe)
+USE_REGIME = True
+REGIME_EMA = 200
 
 # 使用者只接受的加密標的:BTC 與 AAVE(其餘山寨相關性高又弱,加了反而降 Sharpe)
 CRYPTO = ["BTCUSDT", "AAVEUSDT"]
@@ -93,13 +102,15 @@ def collect_legs():
         for tf, fn in CRYPTO_SIGS:
             d = resample_ohlcv(raw, tf)
             if len(d) >= 400:
-                legs.append(leg_daily_returns(d, fn(d), BT_CRYPTO))
+                sig = regime_filter(d, fn(d), REGIME_EMA) if USE_REGIME else fn(d)
+                legs.append(leg_daily_returns(d, sig, BT_CRYPTO))
     for s in EQUITY:
         d = load_or_fetch_daily(s)
         if len(d) < 400:
             continue
         for fn in EQUITY_SIGS:
-            legs.append(leg_daily_returns(d, fn(d), BT_EQUITY))
+            sig = regime_filter(d, fn(d), REGIME_EMA) if USE_REGIME else fn(d)
+            legs.append(leg_daily_returns(d, sig, BT_EQUITY))
     return legs
 
 

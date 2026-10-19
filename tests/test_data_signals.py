@@ -10,7 +10,14 @@ import pandas as pd
 import pytest
 
 from engine.data import atr, donchian, ema, resample_ohlcv
-from signals.library import donchian_breakout, ema_cross, ema_ribbon_trend, with_trend_filter
+from signals.library import (
+    bollinger_revert,
+    donchian_breakout,
+    ema_cross,
+    ema_ribbon_trend,
+    regime_filter,
+    with_trend_filter,
+)
 
 
 def _synthetic(n=600, seed=0):
@@ -34,6 +41,8 @@ def _synthetic(n=600, seed=0):
         lambda d: donchian_breakout(d, period=48),
         lambda d: ema_cross(d, fast=20, slow=60),
         lambda d: ema_ribbon_trend(d, spans=(20, 40, 80)),
+        lambda d: bollinger_revert(d, period=20, k=2.0),
+        lambda d: regime_filter(d, donchian_breakout(d, 48), ema_span=50),
     ],
 )
 def test_signals_have_no_lookahead(fn):
@@ -87,6 +96,35 @@ def test_signals_values_in_set():
         ema_ribbon_trend(df, (20, 40, 80)),
     ]:
         assert set(pd.unique(s)).issubset({-1, 0, 1})
+
+
+def test_regime_filter_blocks_counter_trend():
+    """嚴格上升盤 → close 恆在 EMA 之上 → 多單保留、空單被濾掉。"""
+    n = 300
+    close = pd.Series(np.linspace(100, 300, n))
+    df = pd.DataFrame(
+        {"timestamp": pd.date_range("2024-01-01", periods=n, freq="15min", tz="UTC"),
+         "open": close, "high": close + 1, "low": close - 1, "close": close,
+         "volume": 1.0}
+    )
+    entry = pd.Series([1 if i % 2 == 0 else -1 for i in range(n)])
+    out = regime_filter(df, entry, ema_span=50)
+    tail = slice(100, n)  # EMA 穩定落後後的區段
+    assert (out[tail][entry[tail] == 1] == 1).all()   # 多單全保留
+    assert (out[tail][entry[tail] == -1] == 0).all()  # 空單全被濾掉
+
+
+def test_bollinger_revert_fades_extremes():
+    """布林均值回歸:深跌破下軌→做多(+1),暴衝上軌→做空(-1)。"""
+    base = [100.0] * 40
+    df = pd.DataFrame(
+        {"timestamp": pd.date_range("2024-01-01", periods=42, freq="15min", tz="UTC"),
+         "open": base + [100, 100], "high": base + [100, 140],
+         "low": base + [60, 100], "close": base + [60.0, 140.0], "volume": 1.0}
+    )
+    s = bollinger_revert(df, period=20, k=2.0)
+    assert s.iloc[-2] == 1   # 深跌 → 做多
+    assert s.iloc[-1] == -1  # 暴衝 → 做空
 
 
 def test_with_trend_filter_keeps_only_aligned():
