@@ -61,6 +61,15 @@ def main() -> None:
                   f"價 {e['price']:.4f} | 初始停損 {e['init_stop']:.4f} | "
                   f"部位≈權益{e['notional_pct_of_equity']:.0%}")
 
+    exits = port.current_exits(data)
+    print("\n=== 時間停損(持倉到期,建議平倉;趨勢續行待新訊號再進)===")
+    if not exits:
+        print("(目前沒有到期部位)")
+    else:
+        for x in exits:
+            print(f"⏳ {x['coin']} {x['direction']} | {x['signal_name']}({x['timeframe']}) | "
+                  f"價 {x['price']:.4f} | 持倉 {x['held_bars']} 根")
+
 
 if __name__ == "__main__":
     main()
