@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 import pandas as pd  # noqa: E402
 
 from engine.fetch_binance import fetch_recent  # noqa: E402
+from engine.ledger import log_signals  # noqa: E402
 from engine.notify import format_signal_events, send_telegram, telegram_configured  # noqa: E402
 from engine.strategy import TrendPortfolio, default_legs  # noqa: E402
 
@@ -49,6 +50,10 @@ def main() -> None:
             f"🔔 {e['coin']} {e['direction']} | {e['signal_name']}({e['timeframe']}) | "
             f"價 {e['price']:.4f} | 初始停損 {e['init_stop']:.4f}"
         )
+
+    # 落地到紙上交易帳本(冪等),供日後實盤 vs 回測比對
+    added = log_signals(events)
+    print(f"📒 紙上帳本新增 {added} 筆(output/paper_trades.csv)")
 
     msg = format_signal_events(events)
     if telegram_configured():
