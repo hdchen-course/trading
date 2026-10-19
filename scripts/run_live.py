@@ -85,6 +85,7 @@ def main() -> None:
             f"價 {e['price']:.4f} | 初始停損 {e['init_stop']:.4f} | "
             f"建議部位≈權益{e['notional_pct_of_equity']:.1%}"
             + (f"(品質×{e['quality_mult']})" if e.get('quality_mult', 1.0) != 1.0 else "")
+            + (f"\n    ↳ 分批放:{e['scale_out_hint']}" if e.get('scale_out_hint') else "")
         )
     for x in exits:
         print(

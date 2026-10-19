@@ -80,15 +80,26 @@ BT_COMMON = dict(take_profit_pct=None, max_hold_bars=80, allow_opposite_exit=Tru
                  risk_per_trade_pct=0.02, initial_capital=10000.0)
 
 
-def leg_daily_returns(df, sig, bt_kwargs):
-    """跑一條 leg,回傳「以其自身資料範圍為準」的日報酬(範圍外為 NaN)。"""
-    res = EventBacktester(**bt_kwargs, **BT_COMMON).run(df, sig)
+def leg_daily_returns(df, sig, bt_kwargs, take_profit=None):
+    """跑一條 leg,回傳「以其自身資料範圍為準」的日報酬(範圍外為 NaN)。
+    take_profit 設值時覆寫 BT_COMMON 的獲利目標(供分批放的 core 部位使用)。"""
+    common = dict(BT_COMMON)
+    if take_profit is not None:
+        common["take_profit_pct"] = take_profit
+    res = EventBacktester(**bt_kwargs, **common).run(df, sig)
     cal = pd.date_range(df["timestamp"].min().normalize(),
                         df["timestamp"].max().normalize(), freq="D")
     eq = pd.Series(BT_COMMON["initial_capital"], index=cal, dtype=float)
     for t in res.trades:
         eq.loc[eq.index >= pd.Timestamp(t.exit_time).normalize()] = t.equity_after
     return eq.pct_change()
+
+
+# 分批放(scale-out):到 +SCALE_OUT_AT 獲利減碼 SCALE_OUT_FRAC,其餘續跑 6×ATR 移動停損。
+# 報酬對部位線性 + core/runner 同根進場 → 日報酬 blend 等價。端錨多窗驗證全部窗 Sharpe 升、
+# 回撤持平,+15~40% 目標皆成立(寬平台非擬合),crypto 與 equity 皆受益(見 scale_out_study)。
+SCALE_OUT_FRAC = 0.5
+SCALE_OUT_AT = 0.20
 
 
 def maxdd(equity):
@@ -114,7 +125,15 @@ def scale_and_report(port_ret, label, target_dd=0.18):
           f"Sharpe {sharpe:.2f} | 週勝率 {(wk > 0).mean():.1%} | 週達標(+1.5%) {wk_target:.1%}")
 
 
-def collect_legs():
+def collect_legs(scale_out=False):
+    """各 leg 日報酬清單。scale_out=True 時套用分批放(frac 在 +SCALE_OUT_AT 落袋、其餘續跑)。"""
+    def one(d, sig, bt):
+        runner = leg_daily_returns(d, sig, bt)
+        if not scale_out:
+            return runner
+        core = leg_daily_returns(d, sig, bt, take_profit=SCALE_OUT_AT)
+        return SCALE_OUT_FRAC * core + (1 - SCALE_OUT_FRAC) * runner
+
     legs = []
     for c in CRYPTO:
         raw = load_or_fetch(c, "1h")
@@ -123,13 +142,13 @@ def collect_legs():
         for tf, fn in CRYPTO_SIGS:
             d = resample_ohlcv(raw, tf)
             if len(d) >= 400:
-                legs.append(leg_daily_returns(d, _gate(d, fn(d)), BT_CRYPTO))
+                legs.append(one(d, _gate(d, fn(d)), BT_CRYPTO))
     for s in EQUITY:
         d = load_or_fetch_daily(s)
         if len(d) < 400:
             continue
         for fn in EQUITY_SIGS:
-            legs.append(leg_daily_returns(d, _gate(d, fn(d)), BT_EQUITY))
+            legs.append(one(d, _gate(d, fn(d)), BT_EQUITY))
     return legs
 
 
