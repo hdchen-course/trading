@@ -17,11 +17,22 @@ import pandas as pd
 _CACHE = Path(__file__).resolve().parents[1] / "data" / "cache"
 
 
-def fetch_equity_daily(symbol: str) -> pd.DataFrame:
+def merge_ohlcv(old: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    """合併兩段 OHLCV,依 timestamp 去重(保留較新那筆)、排序。純函式便於測試。"""
+    if old is None or len(old) == 0:
+        return new.reset_index(drop=True)
+    if new is None or len(new) == 0:
+        return old.reset_index(drop=True)
+    both = pd.concat([old, new], ignore_index=True)
+    both = both.drop_duplicates(subset="timestamp", keep="last")
+    return both.sort_values("timestamp").reset_index(drop=True)
+
+
+def fetch_equity_daily(symbol: str, period: str = "max") -> pd.DataFrame:
     """抓單一美股/ETF 日線,正規化為標準 OHLCV(timestamp/open/high/low/close/volume)。"""
     import yfinance as yf
 
-    raw = yf.download(symbol, period="max", interval="1d",
+    raw = yf.download(symbol, period=period, interval="1d",
                       auto_adjust=True, progress=False)
     if raw is None or raw.empty:
         return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
@@ -39,16 +50,25 @@ def fetch_equity_daily(symbol: str) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-def load_or_fetch_daily(symbol: str) -> pd.DataFrame:
-    """優先讀快取,沒有才抓並寫快取。"""
+def load_or_fetch_daily(symbol: str, refresh: bool = False) -> pd.DataFrame:
+    """讀快取;refresh=True 時再抓最近 6 個月與快取合併(補上最新交易日),回寫快取。
+
+    refresh 讓 live 的美股日線即時到當日(否則讀快取會差一天)。老機器無 yfinance 時,
+    呼叫端已以 try/except 包起,會退回純快取或略過美股。
+    """
     _CACHE.mkdir(parents=True, exist_ok=True)
     path = _CACHE / f"{symbol.upper()}_1d.csv"
-    if path.exists():
-        return pd.read_csv(path, parse_dates=["timestamp"])
-    df = fetch_equity_daily(symbol)
-    if len(df):
-        df.to_csv(path, index=False)
-    return df
+    cache = pd.read_csv(path, parse_dates=["timestamp"]) if path.exists() else None
+
+    if cache is not None and not refresh:
+        return cache
+
+    recent_period = "6mo" if cache is not None else "max"
+    fresh = fetch_equity_daily(symbol, period=recent_period)
+    merged = merge_ohlcv(cache, fresh)
+    if len(merged):
+        merged.to_csv(path, index=False)
+    return merged
 
 
 if __name__ == "__main__":

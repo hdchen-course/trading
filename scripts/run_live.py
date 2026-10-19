@@ -47,7 +47,7 @@ def main() -> None:
 
         for s in EQUITIES:
             try:
-                data[s] = load_or_fetch_daily(s)
+                data[s] = load_or_fetch_daily(s, refresh=True)  # 補上當日最新日線
             except Exception as exc:
                 print(f"  ⚠️ {s} 抓取失敗: {exc}")
         legs += equity_legs([s for s in EQUITIES if s in data])
