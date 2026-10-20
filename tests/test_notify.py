@@ -29,3 +29,18 @@ def test_format_long_and_short():
     assert "BTCUSDT" in msg and "做多" in msg
     assert "ETHUSDT" in msg and "做空" in msg
     assert "50000" in msg
+
+
+def test_format_includes_scale_out_and_quality():
+    """推播須含分批放階梯與品質傾斜(與 run_live 主控台一致,避免漏掉出場計畫)。"""
+    events = [{
+        "coin": "BTCUSDT", "signal_name": "EMA50/200", "timeframe": "4h",
+        "direction": "LONG", "price": 50000.0, "init_stop": 47000.0,
+        "trailing_hint": "6.0×ATR 移動停損", "risk_pct": 0.02,
+        "notional_pct_of_equity": 0.137, "quality_mult": 0.414,
+        "scale_out_hint": "到 60000.0000(+20%)減碼 33%;到 70000.0000(+40%)減碼 33%,其餘 6.0×ATR 移動停損",
+    }]
+    msg = notify.format_signal_events(events)
+    assert "分批放" in msg
+    assert "減碼 33%" in msg
+    assert "品質×0.414" in msg

@@ -48,15 +48,20 @@ def format_signal_events(events: List[dict]) -> str:
         arrow = "🟢 做多" if e["direction"] == "LONG" else "🔴 做空"
         size_line = ""
         if e.get("notional_pct_of_equity") is not None:
+            qm = e.get("quality_mult", 1.0)
+            qnote = f",品質×{qm}" if qm != 1.0 else ""
             size_line = (
                 f"\n　建議部位:名目約權益 {e['notional_pct_of_equity']:.0%}"
-                f"(停損被打到最多賠 {e.get('risk_pct', 0):.0%})"
+                f"(停損被打到最多賠 {e.get('risk_pct', 0):.0%}{qnote})"
             )
+        # 分批放階梯(若有):與 run_live 主控台一致,讓推播也含完整出場計畫
+        scale_line = f"\n　分批放:{e['scale_out_hint']}" if e.get("scale_out_hint") else ""
         lines.append(
             f"\n{arrow} <b>{e['coin']}</b> ({e['signal_name']} {e['timeframe']})\n"
             f"　價格 {e['price']:.4f}\n"
             f"　建議初始停損 {e['init_stop']:.4f}"
             f"{size_line}\n"
             f"　出場:{e['trailing_hint']}"
+            f"{scale_line}"
         )
     return "".join(lines)
