@@ -45,7 +45,6 @@ def main() -> None:
             print(f"  ⚠️ {c} 抓取失敗: {exc}")
 
     # 美股/ETF 日線(yfinance 研究資料源;老機器無 yfinance 時此段略過,加密路徑仍可跑)
-    vix_df = None
     try:
         from engine.fetch_equity import load_or_fetch_daily
 
@@ -55,10 +54,6 @@ def main() -> None:
             except Exception as exc:
                 print(f"  ⚠️ {s} 抓取失敗: {exc}")
         legs += equity_legs([s for s in EQUITIES if s in data])
-        try:
-            vix_df = load_or_fetch_daily("^VIX", refresh=True)  # 總經風險 overlay 用
-        except Exception as exc:
-            print(f"  ⚠️ VIX 抓取失敗(略過風險 overlay): {exc}")
     except Exception as exc:
         print(f"  ⚠️ 美股資料層不可用(略過,僅跑加密): {exc}")
 
@@ -68,16 +63,8 @@ def main() -> None:
         legs=legs, meta_model_path=str(meta_path) if meta_path.exists() else None)
     events = port.current_signals(data)
     exits = port.current_exits(data)  # 時間停損:持倉滿 max_hold_bars 建議平倉(已驗證 edge)
-
-    # 總經風險 overlay:VIX(昨收)> 門檻 → 風險off,濾掉美股新做多(已多窗驗證降回撤+升OOS)
-    from engine.risk_overlay import DEFAULT_VIX_THRESHOLD, filter_equity_longs, is_risk_off_now
-
-    risk_off = is_risk_off_now(vix_df)
-    if risk_off:
-        events, suppressed = filter_equity_longs(events, risk_off=True)
-        vix_now = float(vix_df["close"].iloc[-1]) if vix_df is not None else float("nan")
-        print(f"⚠️ 風險off:VIX={vix_now:.1f}(>{DEFAULT_VIX_THRESHOLD:.0f})→ 美股做多暫停,"
-              f"濾掉 {len(suppressed)} 筆美股做多;建議現有美股多單減碼(加密不受影響)。")
+    # 註:VIX>30 風險off overlay 已於 2026-10-21 重審後移除——在現行 6×trail+分批放配置下,
+    # 它在全部端錨窗皆略降 Sharpe(砍掉了高期望的「恐慌中順勢多單」),見 engine/risk_overlay.py 說明。
 
     for e in events:
         print(
