@@ -55,7 +55,19 @@
 除方向定論外,本輪另測並誠實否決(全記 memory):資金費率方向(AAVE 擁擠多僅弱過濾)、VIX 期限結構斜率 gate、crypto Fear&Greed(=動能非反向,冗餘)、turn-of-month(真實但 modest+publicized)、52週高 proximity(提高勝率但當 filter 砍肥尾→傷 Sharpe)、隔夜/日內(成本殺死)、非科技板塊擴充(稀釋趨勢)、pre-FOMC drift(2020 outlier 灌水、ex-2020 不顯著 p≈0.1)。**唯一部署動作=移除已失效的 VIX>30 overlay(重審證實現行配置下全窗被無 gate 主宰)。**
 除上述,另於 2026-10-22 誠實否決:**分散比(diversification ratio)曝險節流**——當各腿日報酬同步(分散瓦解=隱性集中)時減碼,理論上專打崩跌群聚而非趨勢(異於 vol-target)。端錨多窗(全期+近2/3/4/5年)× 3 窗長 × 3 clip = 9 組,僅 1 組(trailing40日 clip[0.7,1.3])全窗微升,且近窗移動僅 ±0.02(雜訊級)、avg 曝險≈1.00(幾乎無作用);唯一實質增益在全期(1.01→1.08),同 dip sleeve 被舊 regime 主導。真 edge 對旋鈕穩健(scale-out 有 +15~40% 寬平台);此為可挑選的窄尖峰=過擬合。**不部署,live 維持純趨勢。**
 
-**結構性鐵律(5 次驗證)**:本趨勢系統「提高進場勝率的 filter」一律傷 Sharpe——edge 在讓贏家跑的肥右尾+趨勢適性廣度,不在進場挑剔。改善方向=出場/部位/分散,非進場 filter 或方向預測。
+## 經典技術分析方法大全掃描(2026-10-24,使用者列 21 法,4 平行研究 team + team-lead 覆核)
+使用者要求評估:價格行為/ATR/道氏/海龜/威科夫/RSI/Order Flow/ICT/SMC/MA/EMA/Volume Profile/VSA/神奇九轉TD/波浪/一目均衡表/籌碼分布/纏論/MACD/諧波/布林帶/江恩。結論:**21 法無一通過 kill criterion(多窗一致勝已部署基準或零相關可加 sleeve)。** 基準(三件套等權 48 legs,未加 scale-out):全期 0.75 / 近2~5年 1.97/1.84/1.76/1.40(team-lead 親自重跑確認)。
+- **已是系統核心**:MA/EMA(50/200+20/50)、ATR(6×trail+距離 gate)、海龜 Donchian20 突破、價格行為(regime+結構)。換參數只在過擬合平台內抖動,無穩健贏家。
+- **趨勢同族→冗餘/否決(全期升但近4/5年降=舊 regime 稀釋)**:MACD、Ichimoku 一目均衡表(轉換/基準線=中點均線;雲無增量)、Dow Theory(機械化 swing=遲鈍版 EMA200 regime,全窗皆傷)、SMC 的 BOS/CHoCH(=Donchian 突破/反轉偵測)、Elliott「第3浪最長」(=動能,已有)。
+- **逆勢 fade/竭盡反轉→全否決(此宇宙假突破多朝原方向續走)**:TD 神奇九轉(setup9 反轉=擲銅板;+countdown13 偏態驅動/跨市場不一致/最差-47%)、RSI 背離(全窗一致負,與 CVD 背離同命運)、Wyckoff spring/upthrust、SMC liquidity sweep/stop-run(equity 顯著負 t=−5~−7)、布林擠壓突破(肥尾-93.9%)、纏論背馳(≈MACD/CVD 背離,引用否決)。
+- **量價微結構→新測否決(IS 香 OOS 死)**:Volume Profile VPOC/value-area(=水平壓力成交量加權翻版,全期 t=−2.8)、VSA climax/no-demand(爆量後續走,反轉被軋)、Order Flow/CVD(引用既有 of_* 全套否決)。
+- **布林 %b 下軌均值回歸→冗餘**:唯一正期望但 74% 訊號與已 banked 的 RSI2 dip-in-uptrend 同日=同一 sleeve(Sharpe 0.5、-32% 尾,未部署)。
+- **諧波 Harmonic→否決(抓到前視陷阱)**:XABCD Fibonacci,初版在 ZigZag 樞點確認前進場 → 假 100% 勝率/t=+6~9;修正「確認根之後」進場後,crypto 殘留微正(+2~3%/t≈2)但 n 僅 8~19 薄樣本,equity(n=119)轉負不複現,無濾網對照 ~0 → 小樣本海市蜃樓。
+- **不可證偽玄學→照實擋門外不杜撰績效**:波浪理論(數法主觀自由度過高)、江恩(角度線非尺度不變;「時間週期」=已否決時段效應)、纏論(筆/線段/中樞自由度過高)。可機械化子命題皆已涵蓋或已否決。
+- **資料盲點(誠實標記不杜撰)**:加密籌碼分布(交易所流/持幣世代分布=Glassnode 付費,免費歷史不可得,401);美股 13F 免費但季頻+45天延遲、非加密主軸,低價值。
+- **誠實註記**:這些 leg 對基準日 PnL 相關都 ≈0~0.08,但那是稀疏事件型報酬流的假象,非真獨立 alpha;唯一判準是全窗 Sharpe,四群皆未過。scratch:dow_theory/ichimoku/macd/ma_ema_sweep/exhaustion_meanrev/volume_profile/vsa/pattern_geometry_study.py(gitignored)。
+
+**結構性鐵律(6 次驗證)**:本趨勢系統「提高進場勝率的 filter」一律傷 Sharpe——edge 在讓贏家跑的肥右尾+趨勢適性廣度,不在進場挑剔。改善方向=出場/部位/分散,非進場 filter 或方向預測。經典 TA 方法大全(21 法)拆開後:要嘛是已部署的順勢/突破、要嘛是已否決的逆勢fade/背離/時段、要嘛薄到不可靠的小樣本、要嘛不可證偽的玄學——無一例外。
 
 ## 誠實定位
 - 數字為回測(含成本),**非實盤**;美股用 yfinance 日線,與幣安美股合約(休市段預言機)有落差。
